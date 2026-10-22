@@ -1,0 +1,6 @@
+# Text files keep LF line endings on every OS (the Docker image is Linux).
+* text=auto eol=lf
+
+# Never convert line endings inside these: a changed byte breaks a PDF's offsets.
+*.pdf binary
+*.png binary

@@ -1,0 +1,15 @@
+# secrets
+.env
+
+# generated at startup / build time
+models/
+data/vector_store/
+data/database/*.db
+data/database/*.tmp
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/

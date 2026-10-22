@@ -1,0 +1,23 @@
+# API
+fastapi==0.159.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.15.0
+
+# LLM + agent graph
+openai==3.36.1
+langchain-core==1.6.13
+langchain-openai==1.7.2
+langgraph==1.2.16
+
+# RAG
+pypdf==6.21.2
+fastembed==0.9.0
+lancedb==0.40.0
+
+# NL2SQL safety (SQL parser)
+sqlglot==30.24.0
+
+# Tests (kept here so `docker compose run --rm assistant pytest` works)
+pytest==9.1.1
+httpx==0.28.1

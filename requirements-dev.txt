@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Only needed to regenerate the sample PDFs (scripts/make_sample_pdfs.py).
+reportlab==5.1.0

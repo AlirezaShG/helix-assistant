@@ -1,0 +1,11 @@
+.git
+.env
+.venv
+venv
+models
+data/vector_store
+data/database/*.db
+**/__pycache__
+**/*.pyc
+.pytest_cache
+docs

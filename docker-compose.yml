@@ -1,0 +1,8 @@
+services:
+  assistant:
+    build: .
+    image: helix-assistant:latest
+    env_file: .env          # create it with: cp .env.example .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
