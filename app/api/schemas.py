@@ -38,6 +38,7 @@ class DocumentResponse(BaseModel):
     found: bool
     answer: str
     sources: list[SourceModel]
+    evidence: list[str] = Field(description="Sentences quoted from the documents that the answer rests on")
     search_query: str
     retrieved: list[dict[str, Any]]
 

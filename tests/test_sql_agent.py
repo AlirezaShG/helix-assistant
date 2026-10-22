@@ -79,6 +79,12 @@ def test_prose_instead_of_structure_is_retried(db_path):
     assert answer.status == "ok" and answer.rows == [[12]] and answer.attempts == 2
 
 
+def test_empty_model_response_is_retried_instead_of_crashing(db_path):
+    agent, _ = make_agent(db_path, ValueError("empty response"),
+                          SQLDraft(sql="SELECT COUNT(*) AS n FROM products", reason="count"))
+    assert agent.run("How many products?").status == "ok"
+
+
 def test_model_declining_is_reported(db_path):
     agent, _ = make_agent(db_path, SQLDraft(sql=None, reason="The database is read-only."))
     answer = agent.run("Delete cancelled orders")

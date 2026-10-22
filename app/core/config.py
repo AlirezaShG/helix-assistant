@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.0
     llm_timeout_seconds: float = 60.0
     llm_max_retries: int = 2
+    # "low" | "medium" | "high" for reasoning models (gpt-oss, OpenAI o-series). Empty = the provider's
+    # default, and the parameter is not sent at all: non-reasoning models such as gpt-4o-mini reject it.
+    # The evaluation found gpt-oss:20b misreading one policy rule at its default effort and getting it
+    # right 3/3 times at "high", with no measurable extra latency.
+    llm_reasoning_effort: str = ""
     # How the sub-agents get structured answers ({sql, reason}, {answerable, answer, cited_ids}):
     # "json_schema"      -> the server constrains generation to the JSON schema, so the output
     #                       always parses. Supported by OpenAI, Ollama, LM Studio, vLLM.

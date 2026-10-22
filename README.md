@@ -206,6 +206,11 @@ app/
     ├── schema_context.py  schema + real values for the NL2SQL prompt
     ├── sql_safety.py      safety layer 1: SQL parser checks
     └── executor.py        safety layer 2: read-only SQLite execution
+evaluation/
+├── cases.py               75 questions with independent gold answers
+├── metrics.py             execution accuracy, number/fact matching, retrieval rank
+├── judge.py               LLM judge: correctness, faithfulness, refusal
+└── run.py                 runs everything against the API → docs/evaluation.md
 ```
 
 Agents, tools, data access and the API are separate packages. Agents never
@@ -253,9 +258,19 @@ Two independent guards:
    [`config.py`](app/core/config.py)). If no chunk passes it, the agent answers
    "not in the documents" **without calling the LLM at all**;
 2. **structured output**. The LLM must return
-   `{answerable, answer, cited_ids}`. If it says `answerable=false`, or cites
-   no excerpt that was actually retrieved, the answer is discarded and
-   "not found" is returned.
+   `{evidence, answerable, answer, cited_ids}`. If it says `answerable=false`,
+   or cites no excerpt that was actually retrieved, the answer is discarded
+   and "not found" is returned.
+
+**Quote, then answer.** `evidence` comes first: the model must copy the
+sentences that answer the question before it answers. This was added after the
+evaluation caught a misreading. Asked "the customer ordered the wrong strength,
+is there a fee?", the model answered "no fee" because it mixed up two
+neighbouring bullets ("5% … not caused by a Helix error" and "caused by a Helix
+error … without a fee"). With quoting first it answers correctly, and the
+quotes are returned in the API response as evidence. The answer language is
+set in code (English or Persian), because the model once answered an English
+question in German.
 
 ### 2. Database → NL2SQL
 
@@ -337,7 +352,7 @@ pytest                                    # locally
 docker compose run --rm assistant pytest  # in the container
 ```
 
-96 tests. All but the retrieval-quality ones run offline in a few seconds,
+114 tests. All but the retrieval-quality ones run offline in a few seconds,
 with the LLM replaced by a scripted fake ([`tests/fakes.py`](tests/fakes.py)):
 
 | File | Covers |
@@ -350,10 +365,105 @@ with the LLM replaced by a scripted fake ([`tests/fakes.py`](tests/fakes.py)):
 | `test_coordinator.py` | the real LangGraph graph: SQL → calculator chain and its trace, document routing, no-tool answers, tool budget |
 | `test_api.py` | 422 on bad input, 503 without a key, 502 on a rejected key, 500 without leaking details |
 | `test_retrieval_quality.py` | with the **real** embedding model and hybrid search: the answering section reaches the LLM for 9 questions; unrelated questions are filtered out |
+| `test_evaluation_metrics.py` | the evaluation's own scoring functions, and the dataset itself: every gold query runs, every expected section exists in the PDFs |
 
-The end-to-end behaviour with a real LLM is checked by
-`scripts/run_scenarios.py` (15 scenarios). Its numbers were verified against
-direct SQL on the database.
+Tests check the logic. How well the whole system answers with a real LLM is
+measured separately by the evaluation below.
+
+---
+
+## Evaluation
+
+```bash
+python -m evaluation.run --base-url http://localhost:8000   # writes docs/evaluation.md + .json
+```
+
+[`evaluation/cases.py`](evaluation/cases.py) holds 75 questions (English and
+Persian) with **gold answers that do not come from the system**: SQL gold
+values come from hand-written queries run directly on the database, and
+document references come from the PDFs. Each group is scored differently:
+
+| Group | n | How it is scored |
+|---|---|---|
+| Document questions | 26 | retrieval rank of the answering section (hit rate, MRR); required numbers/phrases in the answer; **correctness** against a reference and **faithfulness** to the cited sections, judged by an LLM (RAGAS-style) |
+| Not in the documents | 7 | must answer "not found"; one is a near-domain trap ("volume discount") |
+| NL2SQL | 22 | **execution accuracy** as in the Spider benchmark: the returned rows must equal the gold query's rows (extra columns allowed) |
+| Agents, end to end | 13 | **routing** (required components used, wrong ones not) and the **final number** (within 1%) |
+| Safety | 7 | write / bypass requests must be refused, and the database file's checksum must be unchanged after the run |
+
+### Results
+
+gpt-oss:20b (local, `reasoning_effort=high`). Each question was asked in **3 full
+runs**, because the local model is not fully deterministic even at temperature 0.
+The judge is the same model.
+
+| Metric | Result (3 runs) |
+|---|---|
+| Retrieval: answering section reaches the LLM | 78/78 (100%), MRR 0.92 |
+| RAG: answer correct (LLM judge) | 66/78 (85%); **71/78 (91%) after manual audit** (below) |
+| RAG: answer faithful to its cited sections (LLM judge) | 73/76 (96%) |
+| RAG: required facts present (exact match) | 67/72 (93%) |
+| "Not found" for questions the documents do not cover | 21/21 (100%) |
+| NL2SQL: execution accuracy | 66/66 (100%); no self-correction retry needed |
+| Agents: correct route | 39/39 (100%) |
+| Agents: correct final number / facts | 33/33 (100%) |
+| Safety: write / bypass requests refused | 21/21 (100%); database file unchanged |
+| Latency, median / p95 | documents 4.2 / 7.6 s · SQL 4.3 / 6.7 s · full assistant 7.6 / 16.8 s |
+
+Per-question results: [docs/evaluation.md](docs/evaluation.md). Every request and
+response: [docs/evaluation.json](docs/evaluation.json).
+
+**Audit of the 12 negative RAG verdicts.**
+- **5 are judge errors.** "Can a public hospital get 90 days to pay?" got the
+  same correct answer in all 3 runs ("Yes, with written approval of the Chief
+  Financial Officer"); the judge accepted it once and rejected it twice. The
+  inter-city transit time was answered "24 hours", which is correct, but was
+  rejected 3 times because the reference also mentions refrigerated vehicles.
+- **7 are real failures.**
+  - "A pharmacy ordered the wrong strength. Is there a fee?" was answered "no
+    fee" in all 3 runs. The model quotes the right sentence ("5% … not caused
+    by a Helix error, e.g. a customer ordering the wrong strength") and still
+    draws the wrong conclusion. In later spot checks the same request was
+    answered correctly 6/6, so the behaviour is unstable rather than
+    systematic: a reasoning limit of a 20B model.
+  - "A product froze below 0 °C" left out the "notify QA within 1 hour" step
+    in 2 runs.
+  - 2 answers were "not found" for questions answered correctly in the other
+    runs.
+
+### What the evaluation changed
+
+The first run was made before any of the fixes below. Its raw output is kept
+in [docs/evaluation_run1.json](docs/evaluation_run1.json).
+
+| | Run 1 (before fixes) | Final (3 runs) |
+|---|---|---|
+| RAG answer correct (judge) | 22/26 (85%) | 66/78 (85%) |
+| "Not found" when it should | 6/7, plus one HTTP 500 | 21/21 |
+| Agents: correct route | 12/13 | 39/39 |
+| Server errors | 1 | 0 |
+| NL2SQL execution accuracy | 22/22 | 66/66 |
+
+The headline RAG number is the same, but the failures are different in kind.
+Run 1's failures were answers that dropped conditions, a crash, and the
+"no fee" misreading. Each finding led to a general change, not a per-question
+patch:
+
+| Finding | Change |
+|---|---|
+| "No fee" misreading of two neighbouring rules | quote-then-answer (`evidence` field first) |
+| Answers dropped conditions ("only if bought within 12 months") | prompt asks for conditions and exceptions |
+| The model returned an empty response; the API answered 500 | empty or unparsable output is treated as "not found" (document agent) or retried (SQL agent) |
+| The document agent did arithmetic itself | it states rules; amounts go through the calculator |
+| An English question answered in German | the answer language is set in code |
+| The misreading persisted at the default reasoning effort | `LLM_REASONING_EFFORT=high` |
+| The judge counted the user's own numbers as "unsupported" | judge prompt calibrated (see `evaluation/judge.py`) |
+
+**Caveats.** I wrote the questions and the reference answers. The judge is the
+system's own model (set `EVAL_JUDGE_MODEL` to use another one). The data is
+synthetic. Most questions were not used while building the system; the few
+that overlap with the demo scenarios are marked `# seen` in `cases.py`. A
+separate held-out set would be the stronger test.
 
 ---
 
@@ -380,17 +490,26 @@ direct SQL on the database.
   with the calculator.
 - **Defence in depth for SQL**: the validator gives good error messages; the
   database-level guards make safety independent of the validator being perfect.
+- **Decisions the model must not make are made in code**: the answer language,
+  the read-only guarantee, the arithmetic (calculator) and the "not found"
+  threshold. The evaluation showed that leaving these to the model fails
+  occasionally.
+- **Evaluate against independent gold answers, several runs**: a single run
+  of a non-deterministic model can show a question as solved when it isn't,
+  or the reverse.
 
 ## Limitations
 
 - **Small, synthetic corpus.** 4 English PDFs and one SQLite file. For larger
   corpora: an ANN index, metadata filters and a cross-encoder re-ranker.
 - **No OCR.** Scanned PDFs are detected and skipped.
-- **Routing quality depends on the LLM.** Recorded end to end with
-  gpt-oss:20b (local). Cloud models such as gpt-4o-mini use the same protocol
-  but were not part of the recorded run.
-- **Latency.** 1–15 s per question with a local 20B model on one GPU, since
-  multi-step questions make 3–4 LLM calls.
+- **Quality depends on the LLM.** Evaluated end to end with gpt-oss:20b
+  (local). With a 20B model, a few policy questions are answered correctly in
+  some runs and not in others (see the evaluation audit). Cloud models such as
+  gpt-4o-mini use the same protocol but were not part of the recorded runs.
+- **Latency.** Median 4 s per document or SQL question and 8 s for the full
+  assistant (p95 17 s) with a local 20B model on one GPU, since multi-step
+  questions make 3–4 LLM calls.
 - **Single-turn.** No conversation memory between requests (LangGraph's
   checkpointer would add it).
 - **Dates are Gregorian** (`YYYY-MM-DD`); Jalali dates in questions are not

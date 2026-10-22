@@ -37,7 +37,10 @@ class FakeChatModel:
                 model.calls.append(messages)
                 if not model.structured:
                     raise AssertionError("structured output requested more often than scripted")
-                return model.structured.pop(0)
+                result = model.structured.pop(0)
+                if isinstance(result, Exception):  # script a failure, e.g. an unparsable response
+                    raise result
+                return result
 
         return _Structured()
 

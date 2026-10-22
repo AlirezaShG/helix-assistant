@@ -51,8 +51,10 @@ def build_tools(document_agent: DocumentAgent, sql_agent: SQLAgent) -> list[Base
         """Answer a question from Helix's internal policy documents (PDF): returns, credit notes and
         product recalls; cold-chain storage and transport; customer credit limits, payment terms and
         late fees; adverse-event and quality-complaint reporting. Use it for rules, deadlines,
-        percentages and procedures. Pass one self-contained question. Returns JSON with
-        found (true/false), answer and sources."""
+        percentages and procedures. Pass one self-contained question about the rule itself
+        (e.g. "What is the restocking fee rate?"), not about an amount computed from the user's
+        figures: compute amounts with the calculator. Returns JSON with found (true/false),
+        answer, quoted evidence and sources."""
         started = time.perf_counter()
         logger.info("[coordinator] -> document_agent: %r", question)
         try:

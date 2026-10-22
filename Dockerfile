@@ -18,11 +18,12 @@ ENV EMBEDDING_MODEL=${EMBEDDING_MODEL} \
     EMBEDDING_CACHE_DIR=/app/models
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding('${EMBEDDING_MODEL}', cache_dir='/app/models')"
 
-# 3. Code, sample PDFs, database schema and tests.
+# 3. Code, sample PDFs, database schema, evaluation set and tests.
 COPY pytest.ini ./
 COPY app ./app
 COPY data ./data
 COPY scripts ./scripts
+COPY evaluation ./evaluation
 COPY tests ./tests
 
 # 4. Build the SQLite database and the vector index now, so startup is instant.

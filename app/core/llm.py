@@ -27,6 +27,7 @@ def create_chat_model(settings: Settings) -> ChatOpenAI:
         temperature=settings.llm_temperature,
         timeout=settings.llm_timeout_seconds,
         max_retries=settings.llm_max_retries,
+        reasoning_effort=settings.llm_reasoning_effort or None,  # None: not sent
     )
 
 

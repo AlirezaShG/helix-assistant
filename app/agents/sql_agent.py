@@ -20,10 +20,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
-from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from app.db.executor import SQLExecutionError, SQLPermissionError, list_tables, run_read_only
 from app.db.schema_context import describe_database
@@ -134,6 +133,6 @@ def _invoke_structured(generator, messages) -> SQLDraft | None:
     """Call the structured-output model; None if it did not produce a valid SQLDraft."""
     try:
         return generator.invoke(messages)
-    except (OutputParserException, ValidationError) as exc:
+    except ValueError as exc:  # empty or unparsable output (LangChain's and pydantic's parse errors are ValueErrors)
         logger.warning("[sql_agent] unusable structured output: %s", exc)
         return None

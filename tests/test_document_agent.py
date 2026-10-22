@@ -40,6 +40,21 @@ def test_prose_instead_of_structure_gives_not_found(hash_store):
     assert not agent.run("payment terms for pharmacies").found
 
 
+def test_empty_model_response_gives_not_found_instead_of_an_error(hash_store):
+    # LangChain raises ValueError when the response has no content at all (seen with gpt-oss).
+    llm = FakeChatModel(structured=[ValueError("Structured Output response does not have a 'parsed' field")])
+    agent = DocumentAgent(llm, hash_store, min_score=0.0)
+    assert not agent.run("Does Helix give a volume discount?").found
+
+
+def test_quoted_evidence_is_returned(hash_store):
+    quote = "Overdue invoices incur a late-payment fee of 1.5% of the overdue amount"
+    llm = FakeChatModel(structured=[GroundedAnswer(evidence=[quote], answerable=True, answer="1.5% per month.",
+                                                   cited_ids=[1])])
+    result = DocumentAgent(llm, hash_store, top_k=3, min_score=0.1).run("What is the late payment fee?")
+    assert result.found and result.evidence == [quote]
+
+
 def test_answer_without_a_valid_citation_is_not_trusted(hash_store):
     # The model claims an answer but cites an excerpt id that does not exist.
     llm = FakeChatModel(structured=[GroundedAnswer(answerable=True, answer="30 days", cited_ids=[99])])
