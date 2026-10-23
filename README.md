@@ -404,4 +404,5 @@ LanceDB and the tool-calling agent are from
 [NLP-Foundations-to-Agents](https://github.com/AlirezaShG/NLP-Foundations-to-Agents)
 (notebooks 06 and 07). The FastAPI layout and the embedding model are from
 [pharma-risk-intelligence](https://github.com/AlirezaShG/pharma-risk-intelligence).
-Helix and everything about it is fictional.
+Helix and everything about it is fictional. The policy documents and the sample
+data were created with the help of an LLM.
