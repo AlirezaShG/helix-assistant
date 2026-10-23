@@ -131,7 +131,7 @@ of them:
 |---|---|---|
 | Return window and fee | document_agent | 14 days; 5% restocking fee unless it was Helix's error |
 | Deadline for a serious adverse event (asked in Persian) | document_agent | 24 hours, answered in Persian |
-| Top 3 products by revenue | sql_agent | JOIN, GROUP BY, ORDER BY / LIMIT |
+| Top 3 products by revenue | sql_agent | Insulin glargine pen, influenza vaccine, Adalimumab (8.26, 4.44 and 4.37 billion IRR) |
 | Tehran hospital orders in Q2 | sql_agent | 7 |
 | Hospitals' share of Q1 revenue | sql_agent -> calculator | 72.46% |
 | Revenue change from Q1 to Q2 | sql_agent -> calculator | -14.15% |
