@@ -131,8 +131,8 @@ of them:
 |---|---|---|
 | Return window and fee | document_agent | 14 days; 5% restocking fee unless it was Helix's error |
 | Deadline for a serious adverse event (asked in Persian) | document_agent | 24 hours, answered in Persian |
-| Top 3 products by revenue | sql_agent | Insulin glargine pen, influenza vaccine, Adalimumab (8.26, 4.44 and 4.37 billion IRR) |
-| Tehran hospital orders in Q2 | sql_agent | 7 |
+| Top 3 products by revenue | sql_agent | Insulin glargine pen, influenza vaccine, Adalimumab (8.26, 4.44 and 4.37 billion IRR); SQL: JOIN, GROUP BY, ORDER BY / LIMIT |
+| Tehran hospital orders in Q2 | sql_agent | 7; SQL: JOIN, WHERE on city, type and date, COUNT |
 | Hospitals' share of Q1 revenue | sql_agent -> calculator | 72.46% |
 | Revenue change from Q1 to Q2 | sql_agent -> calculator | -14.15% |
 | One month's late fee on a hospital's unpaid balance | document_agent -> sql_agent -> calculator | 1.5% x 116,850,000 = 1,752,750 IRR |
@@ -396,6 +396,14 @@ synthetic. Questions that overlap with the demo scenarios are marked `# seen` in
   writes the final answer. They stay testable and easy to chain.
 - Some things are done in code instead of left to the model: the answer
   language, read-only access, arithmetic and the "not found" threshold.
+
+## Limitations
+
+- Small synthetic corpus: 4 PDFs and one SQLite database.
+- No OCR, so PDFs need a text layer.
+- No conversation memory between requests.
+- Dates are Gregorian; Jalali dates in questions aren't converted.
+- No authentication or rate limiting.
 
 ## Credits
 
