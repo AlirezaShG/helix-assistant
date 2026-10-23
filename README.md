@@ -1,42 +1,42 @@
-# Helix Assistant: RAG + NL2SQL + Tool-Calling Agents
+# Helix Assistant
 
-A small but complete AI assistant for the internal team of a (fictional)
-pharmaceutical distributor, **Helix Pharma Distribution**. It answers questions
-from two kinds of knowledge:
+Question answering over policy PDFs (RAG) and a sales database (NL2SQL), with a
+small agent layer on top that picks the right source, chains steps together and
+does the math with a calculator tool.
 
-- **policy documents** (4 PDFs: returns and recalls, cold-chain SOP, credit and
-  payment terms, adverse-event reporting) via **RAG**;
-- **a sales database** (SQLite: products, customers, orders, order items) via
-  **natural language → SQL**.
+The company is made up: Helix Pharma Distribution, a pharmaceutical
+distributor. Its internal team can ask about policies (4 PDFs: returns and
+recalls, cold-chain SOP, credit and payment terms, adverse-event reporting) or
+about sales (SQLite: products, customers, orders, order items), in English or
+Persian.
 
-A **coordinator agent** picks the right sub-agent for each question, can chain
-them, and does arithmetic through a **calculator tool**. Every response shows
-which sub-agent and tool ran, the generated SQL, and the cited document sections.
+A real run, with gpt-oss:20b running locally in Ollama:
 
 ```text
-"What percentage of delivered revenue in Q1 2026 came from hospitals?"
-  → sql_agent   SELECT SUM(oi.quantity * oi.unit_price) AS total_revenue_q1,
-                       SUM(CASE WHEN c.customer_type='hospital' THEN ... END) AS hospital_revenue_q1 ...
-                → [[12245570500, 8873750500]]
-  → calculator  (8873750500 / 12245570500) * 100  =  72.4649823379
-  → "The delivered revenue from hospitals in Q1 2026 was 72.46 % of the total delivered revenue."
+Q: What percentage of delivered revenue in Q1 2026 came from hospitals?
+
+sql_agent   SELECT SUM(oi.quantity * oi.unit_price) AS total_revenue_q1,
+                   SUM(CASE WHEN c.customer_type='hospital' THEN ... END) AS hospital_revenue_q1 ...
+            -> [[12245570500, 8873750500]]
+calculator  (8873750500 / 12245570500) * 100 = 72.4649823379
+answer      The delivered revenue from hospitals in Q1 2026 was 72.46 % of the total delivered revenue.
 ```
 
-All examples in this README and in [docs/sample_outputs.md](docs/sample_outputs.md)
-are real outputs, recorded with **gpt-oss:20b** running locally in Ollama.
+Every response says which agents and tools ran, which SQL was executed and
+which document sections were cited.
 
----
+## Running it
 
-## Quick start (Docker)
+With Docker:
 
 ```bash
-cp .env.example .env          # then set LLM_BASE_URL / LLM_MODEL / LLM_API_KEY (see below)
-docker compose up --build     # first build ~3-5 min (downloads the embedding model)
+cp .env.example .env        # set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY
+docker compose up --build   # the first build takes a few minutes (embedding model download)
 ```
 
-The API listens on <http://localhost:8000> and interactive docs are at
-<http://localhost:8000/docs>. The database and vector index are built inside
-the image at build time, so the container starts immediately.
+The API is on http://localhost:8000, with Swagger UI at http://localhost:8000/docs.
+The database and the vector index are built into the image, so the container
+is ready as soon as it starts.
 
 ```bash
 curl -s http://localhost:8000/api/v1/ask \
@@ -44,84 +44,66 @@ curl -s http://localhost:8000/api/v1/ask \
   -d '{"question": "What is the late payment fee for overdue invoices?"}'
 ```
 
-Run the tests inside the container:
-
-```bash
-docker compose run --rm assistant pytest
-```
-
-### Choosing the model
-
-Any **OpenAI-compatible** endpoint whose model supports tool calling works. Set
-these in `.env`:
-
-| Variable | Default | Examples |
-|---|---|---|
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | `https://api.avalai.ir/v1`, `https://openrouter.ai/api/v1`, `http://host.docker.internal:11434/v1` (Ollama on the host) |
-| `LLM_MODEL` | `gpt-4o-mini` | `gpt-4o`, `openai/gpt-4o-mini`, `gpt-oss:20b` |
-| `LLM_API_KEY` | (required) | your key; for Ollama any non-empty value, e.g. `ollama` |
-| `LLM_STRUCTURED_OUTPUT` | `json_schema` | `function_calling` for providers without `response_format` support |
-| `EMBEDDING_PROVIDER` | `local` | `openai` (then also set `EMBEDDING_MODEL=text-embedding-3-small`) |
-
-**Local model (no API key, no cost)**, as used for the recorded outputs:
-
-```bash
-ollama pull gpt-oss:20b            # ~14 GB; fits a 16 GB GPU
-```
-```ini
-# .env
-LLM_BASE_URL=http://host.docker.internal:11434/v1   # without Docker: http://localhost:11434/v1
-LLM_MODEL=gpt-oss:20b
-LLM_API_KEY=ollama
-LLM_TIMEOUT_SECONDS=180
-```
-
-On Windows with a system proxy or VPN client, also set
-`NO_PROXY=localhost,127.0.0.1` when running without Docker. Otherwise the
-OpenAI client sends even local requests through the proxy, which answers 502.
-
-Every other setting (top-k, similarity threshold, SQL timeout, row cap, tool
-budget ...) is in [`app/core/config.py`](app/core/config.py) and can be
-overridden the same way.
-
-### Running without Docker
+Without Docker:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
-cp .env.example .env                                # configure the model
-python -m app.bootstrap                             # database + vector index (downloads the model once)
+cp .env.example .env
+python -m app.bootstrap        # builds the database and the vector index
 uvicorn app.main:app --reload
-pytest
 ```
 
----
+### Model setup
+
+Any endpoint that speaks the OpenAI chat API and supports tool calling should
+work. The settings that matter, in `.env`:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | e.g. `https://api.avalai.ir/v1`, `https://openrouter.ai/api/v1`, or Ollama on the host: `http://host.docker.internal:11434/v1` |
+| `LLM_MODEL` | `gpt-4o-mini` | `gpt-4o`, `openai/gpt-4o-mini`, `gpt-oss:20b`, ... |
+| `LLM_API_KEY` | none | required; for Ollama any non-empty string works |
+| `LLM_REASONING_EFFORT` | empty | `low`, `medium` or `high`, for reasoning models only |
+| `LLM_STRUCTURED_OUTPUT` | `json_schema` | `function_calling` if the provider doesn't support `response_format` |
+| `EMBEDDING_PROVIDER` | `local` | `openai` uses the provider's `/embeddings` (then also set `EMBEDDING_MODEL`) |
+
+I developed and evaluated it with gpt-oss:20b in Ollama on a 16 GB GPU
+(`ollama pull gpt-oss:20b`, about 14 GB):
+
+```ini
+LLM_BASE_URL=http://host.docker.internal:11434/v1   # without Docker: http://localhost:11434/v1
+LLM_MODEL=gpt-oss:20b
+LLM_API_KEY=ollama
+LLM_TIMEOUT_SECONDS=180
+LLM_REASONING_EFFORT=high
+```
+
+On Windows, if a system proxy or VPN client is running, the OpenAI client also
+sends requests for localhost through it and gets a 502. Setting
+`NO_PROXY=localhost,127.0.0.1` fixes that (only needed outside Docker).
+
+The rest (top-k, similarity threshold, SQL timeout, row limit, ...) is in
+`app/core/config.py` and can be overridden from `.env` the same way.
 
 ## API
 
-| Method | Path | What it does |
+| Method | Path | |
 |---|---|---|
-| `POST` | `/api/v1/ask` | Full assistant: coordinator + sub-agents + calculator |
-| `POST` | `/api/v1/documents/ask` | Document sub-agent alone (RAG) |
-| `POST` | `/api/v1/sql/ask` | SQL sub-agent alone; returns the SQL and the rows |
-| `GET` | `/api/v1/health` | Index size, database, LLM configuration |
+| POST | `/api/v1/ask` | the full assistant (coordinator, sub-agents, calculator) |
+| POST | `/api/v1/documents/ask` | document agent only |
+| POST | `/api/v1/sql/ask` | SQL agent only; returns the SQL and the rows |
+| GET | `/api/v1/health` | index size, database and LLM status |
 
-All three `POST` endpoints take `{"question": "..."}` (1–1000 characters).
+The POST endpoints take `{"question": "..."}`, 1 to 1000 characters.
 
-**HTTP status convention.** The status code describes the *request*; the
-outcome of a valid question is always a normal `200` answer:
+Bad input returns 422 and a missing API key 503. Provider problems return 502
+(bad key, unknown model, unreachable), 504 (timeout) or 503 (rate limit).
+Anything unexpected returns 500, with the details only in the server log. "Not
+in the documents" and refused SQL are not errors. They come back as a normal 200
+with `found: false` or `status: "rejected"` / `"no_query"` and the reason.
 
-| Situation | Response |
-|---|---|
-| Empty / too long / missing question | `422` with the validation error |
-| `LLM_API_KEY` not set | `503` with a message saying so |
-| Provider rejects the key / unknown model / unreachable / timeout / rate limit | `502` / `502` / `502` / `504` / `503` |
-| Document index not built | `503` |
-| Anything unexpected | `500`, details only in the server log |
-| Not in the documents | `200`, `found: false`, "The documents do not contain ..." |
-| Unsafe SQL, or a request to change data | `200`, `status: "rejected"` or `"no_query"` with the reason |
-
-Example `/ask` response (real, shortened):
+Example `/ask` response (shortened):
 
 ```json
 {
@@ -143,196 +125,159 @@ Example `/ask` response (real, shortened):
 }
 ```
 
-**[docs/sample_outputs.md](docs/sample_outputs.md)** has all 15 recorded
-scenarios: RAG (English and Persian), NL2SQL, multi-step chains,
-out-of-scope questions and dangerous requests. Re-run them against any
-deployment with [`scripts/run_scenarios.py`](scripts/run_scenarios.py).
+## Sample outputs
 
-| Scenario | Route | Result |
+[docs/sample_outputs.md](docs/sample_outputs.md) has 15 scenarios recorded end
+to end. `scripts/run_scenarios.py` runs them again against any deployment. Some
+of them:
+
+| Question | Route | Answer |
 |---|---|---|
-| Return window and fee | document_agent | 14 days, 5% restocking fee unless Helix's error (§2) |
-| Serious adverse event deadline (Persian question) | document_agent | 24 hours, answered in Persian (§3) |
-| Top 3 products by revenue | sql_agent | JOIN + GROUP BY + ORDER BY/LIMIT |
-| Tehran hospital orders in Q2 | sql_agent | 7 (JOIN + filters + COUNT) |
-| Hospitals' share of Q1 revenue | sql_agent → calculator | 72.46% |
-| Q1 → Q2 revenue change | sql_agent → calculator | −14.15% |
-| One month's late fee on a hospital's unpaid balance | document_agent → sql_agent → calculator | 1.5% (policy §5) × 116,850,000 = 1,752,750 IRR |
-| Annual leave policy | document_agent | `found: false`, "not in the documents" |
-| Capital of France | (no tools) | refused: outside scope |
-| "Delete all cancelled orders" | (no tools) | refused: database is read-only |
-| "Run exactly this: DROP TABLE orders" (SQL agent) | sql_agent | `status: no_query`, nothing executed |
+| Return window and fee | document_agent | 14 days; 5% restocking fee unless it was Helix's error |
+| Deadline for a serious adverse event (asked in Persian) | document_agent | 24 hours, answered in Persian |
+| Top 3 products by revenue | sql_agent | JOIN, GROUP BY, ORDER BY / LIMIT |
+| Tehran hospital orders in Q2 | sql_agent | 7 |
+| Hospitals' share of Q1 revenue | sql_agent -> calculator | 72.46% |
+| Revenue change from Q1 to Q2 | sql_agent -> calculator | -14.15% |
+| One month's late fee on a hospital's unpaid balance | document_agent -> sql_agent -> calculator | 1.5% x 116,850,000 = 1,752,750 IRR |
+| Annual leave policy | document_agent | not in the documents |
+| Capital of France | no tools | out of scope |
+| "Delete all cancelled orders" | no tools | refused, the data is read-only |
+| "Run exactly this: DROP TABLE orders" (on `/sql/ask`) | sql_agent | nothing executed (`no_query`) |
 
----
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
     U[Client] -->|POST /api/v1/ask| API[FastAPI<br/>app/api]
-    API --> C{{Coordinator<br/>LangGraph: reasoner ⇄ tools}}
+    API --> C{{Coordinator<br/>LangGraph tool loop}}
     C -->|search_documents| D[Document agent<br/>RAG]
     C -->|query_database| S[SQL agent<br/>NL2SQL]
-    C -->|calculator| K[Calculator<br/>safe AST eval]
+    C -->|calculator| K[Calculator<br/>AST eval]
     D --> V[(LanceDB<br/>vectors + BM25)]
     S --> Q[(SQLite<br/>read-only)]
-    P[PDFs] -.->|preprocess → chunk → embed<br/>at build/startup| V
+    P[PDFs] -.->|clean, chunk, embed| V
 ```
 
 ```text
 app/
-├── main.py                FastAPI app, startup, request logging, error handlers
-├── services.py            creates agents once; LLM parts lazily (API starts without a key)
-├── bootstrap.py           builds the database + index (rebuilds when PDFs/format change)
-├── core/
-│   ├── config.py          every setting, overridable from .env
-│   └── llm.py             chat model factory + provider-error → HTTP mapping
-├── api/
-│   ├── routes.py          the four endpoints
-│   └── schemas.py         request validation and response models
-├── agents/
-│   ├── coordinator.py     router: LLM + tools graph, trace of every step
-│   ├── document_agent.py  retrieve → threshold → grounded answer with citations
-│   └── sql_agent.py       generate → validate → execute → self-correct
-├── tools/
-│   ├── registry.py        the three tools the coordinator can call
-│   └── calculator.py      arithmetic without eval()
-├── rag/
-│   ├── pdf_preprocessing.py  PDF → clean, structured blocks
-│   ├── chunking.py           section-aware chunks
-│   ├── embeddings.py         fastembed (local) or OpenAI-compatible
-│   └── vector_store.py       LanceDB index + hybrid search
-└── db/
-    ├── seed.py            deterministic sample data
-    ├── schema_context.py  schema + real values for the NL2SQL prompt
-    ├── sql_safety.py      safety layer 1: SQL parser checks
-    └── executor.py        safety layer 2: read-only SQLite execution
-evaluation/
-├── cases.py               75 questions with independent gold answers
-├── metrics.py             execution accuracy, number/fact matching, retrieval rank
-├── judge.py               LLM judge: correctness, faithfulness, refusal
-└── run.py                 runs everything against the API → docs/evaluation.md
+  main.py                  FastAPI app, startup, logging, error handlers
+  services.py              creates the agents once (LLM parts lazily, so the API starts without a key)
+  bootstrap.py             builds the database and the index, rebuilds when the PDFs change
+  core/config.py           all settings
+  core/llm.py              chat model + mapping provider errors to HTTP codes
+  api/routes.py            endpoints
+  api/schemas.py           request/response models
+  agents/coordinator.py    router (LangGraph)
+  agents/document_agent.py retrieve, threshold, answer with citations
+  agents/sql_agent.py      generate, validate, execute, retry once
+  tools/registry.py        the three tools the coordinator can call
+  tools/calculator.py      arithmetic without eval()
+  rag/                     PDF cleanup, chunking, embeddings, LanceDB search
+  db/                      seed data, schema description, SQL validator, read-only executor
+evaluation/                question set, metrics, LLM judge, runner
+tests/
 ```
 
-Agents, tools, data access and the API are separate packages. Agents never
-touch HTTP, and the API never builds prompts.
+Agents don't know about HTTP and the API doesn't build prompts.
 
-### 1. Documents → RAG
+### Documents (RAG)
 
-**Preprocessing** ([`pdf_preprocessing.py`](app/rag/pdf_preprocessing.py)).
-Raw `pypdf` text is not fit for embedding, so five steps fix concrete
-problems:
-1. per-page extraction; pages without a text layer are reported (no OCR here);
-2. Unicode NFKC normalisation, plus mapping of broken bullet glyphs (in these
-   PDFs the bullet comes out as `U+007F`);
-3. removal of the running header (detected as a line repeated on ≥50% of
-   pages) and of `Page X of Y` footers;
-4. re-joining wrapped lines into paragraphs, and de-hyphenating line breaks;
-5. detection of numbered headings and bullets.
+Raw pypdf output needs some cleanup before it's worth embedding
+(`app/rag/pdf_preprocessing.py`):
 
-**Chunking** ([`chunking.py`](app/rag/chunking.py)). The PDFs are organised
-in numbered sections, each roughly one rule, so a chunk is a section (split
-between paragraphs if longer than 900 characters). Each chunk is prefixed
-with `Document title > Section heading`, so it stands on its own: "Overdue
-invoices incur 1.5% ..." becomes findable for "late payment fee". This
-produces 30 chunks from the 4 PDFs.
+- NFKC normalization; the bullet character in these PDFs comes out as U+007F,
+  so it gets mapped back to a bullet
+- the running header (a line that repeats on at least half of the pages) and
+  the "Page X of Y" footers are removed
+- wrapped lines are joined back into paragraphs and hyphenated line breaks fixed
+- numbered headings and bullets are detected
+- pages without a text layer are reported; there is no OCR
 
-**Embedding.** The default embedding model is
-`paraphrase-multilingual-MiniLM-L12-v2` (384-d), running on CPU through
-fastembed/ONNX: no PyTorch, no GPU, no API cost. It is baked into the image.
-Persian questions are first rewritten into an English search query (one short
-LLM call), and the answer comes back in Persian.
+Chunks follow the document sections, because each numbered section is about
+one rule. Sections longer than about 900 characters are split between
+paragraphs. Every chunk starts with `Document title > Section heading`, so it
+makes sense on its own and can be cited. That gives 30 chunks.
 
-**Hybrid retrieval** ([`vector_store.py`](app/rag/vector_store.py)). LanceDB
-runs a vector search and a BM25 full-text search (stemmed, stop words
-removed), and the two rankings are merged with **reciprocal rank fusion**.
-This was added after a real failure: for "a refrigerated product was above
-8 °C for 40 minutes", vector search alone ranked the excursion section 6th,
-outside the top 5, so the agent rightly said "not found". BM25 ranks it 1st
-because "8 °C" and "minutes" appear in it verbatim. With fusion the agent
-answers correctly (quarantine, notify QA within 1 hour). A regression test in
-`test_retrieval_quality.py` covers this case.
+Embeddings are `paraphrase-multilingual-MiniLM-L12-v2` through fastembed (ONNX
+on CPU, no torch), stored in LanceDB. The model is downloaded during the image
+build. Persian questions are translated into an English search query first, and
+the answer comes back in Persian.
 
-**Grounding: no made-up answers** ([`document_agent.py`](app/agents/document_agent.py)).
-Two independent guards:
-1. a **similarity threshold** (cosine ≥ 0.30, calibrated, see
-   [`config.py`](app/core/config.py)). If no chunk passes it, the agent answers
-   "not in the documents" **without calling the LLM at all**;
-2. **structured output**. The LLM must return
-   `{evidence, answerable, answer, cited_ids}`. If it says `answerable=false`,
-   or cites no excerpt that was actually retrieved, the answer is discarded
-   and "not found" is returned.
+Retrieval is hybrid: vector search plus LanceDB's BM25 full-text index, merged
+with reciprocal rank fusion. I added BM25 after vector search alone put the
+right section 6th for "a refrigerated product was above 8 °C for 40 minutes",
+outside the top 5, so the agent said "not found". Exact tokens like "8 °C" are
+where BM25 helps. `tests/test_retrieval_quality.py` keeps this case as a
+regression test.
 
-**Quote, then answer.** `evidence` comes first: the model must copy the
-sentences that answer the question before it answers. This was added after the
-evaluation caught a misreading. Asked "the customer ordered the wrong strength,
-is there a fee?", the model answered "no fee" because it mixed up two
-neighbouring bullets ("5% … not caused by a Helix error" and "caused by a Helix
-error … without a fee"). With quoting first it answers correctly, and the
-quotes are returned in the API response as evidence. The answer language is
-set in code (English or Persian), because the model once answered an English
-question in German.
+Against made-up answers:
 
-### 2. Database → NL2SQL
+- If no chunk reaches a cosine similarity of 0.30, the agent says the
+  documents don't cover it, without calling the LLM.
+- The LLM answers with structured output: `{evidence, answerable, answer, cited_ids}`.
+  `evidence` comes first, so it has to quote the relevant sentences before
+  answering. If `answerable` is false, or it cites a chunk that wasn't
+  retrieved, the answer is replaced with "not found".
 
-The schema is [`data/database/schema.sql`](data/database/schema.sql): 4 tables
-linked by foreign keys. The data is generated deterministically by
-[`app/db/seed.py`](app/db/seed.py) (`random.Random(2026)`): 15 customers,
-12 products, 298 orders and 765 order lines (Jan–Sep 2026), identical on every
-machine.
+The quote-first part came out of the evaluation. For "the customer ordered the
+wrong strength, is there a fee?", the model kept mixing up two neighbouring
+bullets and answered "no fee". The answer language (English or Persian) is also
+set in code, because one English question got an answer in German.
 
-**What the model sees** ([`schema_context.py`](app/db/schema_context.py)): the
-commented DDL itself (the comments state units, allowed values and the revenue
-definition), plus the real values of low-cardinality text columns and the date
-range. That way "تهران" becomes `city = 'Tehran'` instead of a guessed spelling.
+### Database (NL2SQL)
 
-**Flow** ([`sql_agent.py`](app/agents/sql_agent.py)): the LLM returns
-`{sql, reason}` as structured output → layer 1 → layer 2 → rows. If the query
-fails to parse or run (e.g. `no such column`), the error is shown to the
-model **once** for self-correction. Unsafe SQL is never retried. Nothing is
-hard-coded per question.
+The schema is in `data/database/schema.sql`: products, customers, orders and
+order_items, linked by foreign keys. `app/db/seed.py` generates the data with a
+fixed seed (15 customers, 12 products, 298 orders and 765 order lines, Jan to
+Sep 2026), so it's the same on every machine.
 
-**Safety: two independent layers**, each tested as if the other did not exist:
+The prompt gets the commented DDL (units, allowed values, how revenue is
+defined), the actual values of the small text columns, and the date range.
+That way "تهران" becomes `city = 'Tehran'` instead of a guess.
 
-| Layer | File | Mechanism |
-|---|---|---|
-| 1. Static validation | [`sql_safety.py`](app/db/sql_safety.py) | Parsed with **sqlglot** (a real parser, so `SELECT 'drop table'` passes and a `DELETE` hidden in a CTE does not). Exactly one statement, must be a query, no write/DDL/PRAGMA/ATTACH/`SELECT INTO` anywhere in the tree, only the 4 business tables (no `sqlite_master`), no `load_extension` etc. |
-| 2. Database level | [`executor.py`](app/db/executor.py) | File opened **read-only** (`mode=ro`). An **authorizer callback** allows only SELECT/READ/FUNCTION. Python's `execute()` refuses multiple statements. A progress handler kills queries after 3 s, and at most 200 rows are fetched. |
+The model returns `{sql, reason}`, and the SQL goes through two checks that
+don't rely on each other:
 
-### 3. Agents, tools and routing
+1. `app/db/sql_safety.py` parses it with sqlglot. It must be exactly one
+   statement and a query, with no INSERT/UPDATE/DELETE/DDL/PRAGMA/ATTACH anywhere
+   in the tree (CTEs included), only the four tables (no `sqlite_master`), and
+   no functions like `load_extension`. Since it's a real parser,
+   `SELECT 'drop table'` is fine.
+2. `app/db/executor.py` opens the file read-only (`mode=ro`) with an authorizer
+   that only allows SELECT/READ/FUNCTION. It stops queries after 3 seconds and
+   fetches at most 200 rows.
 
-The [coordinator](app/agents/coordinator.py) is a LangGraph graph of two
-nodes: `reasoner` (the LLM with three tools bound) and `tools` (LangGraph's
-`ToolNode`), looping until the LLM answers without calling a tool:
+If a query fails to parse or run (`no such column`, for example), the error goes
+back to the model once so it can fix it. Rejected queries are never retried.
 
-| Tool | Component | Used for |
-|---|---|---|
-| `search_documents(question)` | Document agent | rules, deadlines, procedures |
-| `query_database(question)` | SQL agent | figures about sales, customers, products |
-| `calculator(expression)` | Calculator | every percentage, difference, ratio, fee |
+### Agents and tools
 
-**Routing** is the LLM's tool choice, steered by precise tool descriptions
-([`registry.py`](app/tools/registry.py)) and explicit rules in the system
-prompt:
-- never answer about Helix from general knowledge;
-- send every policy question to the documents, even when the topic seems
-  uncovered;
-- fetch raw figures with SQL and compute with the calculator;
-- report `found=false` honestly;
-- refuse data changes.
+The coordinator (`app/agents/coordinator.py`) is a LangGraph loop of two nodes.
+One is the LLM with three tools bound, the other is a ToolNode. It runs until
+the LLM answers without calling a tool:
 
-Multi-step questions are several rounds, e.g. SQL → calculator, or
-documents → SQL → calculator. A tool budget (6 rounds) prevents endless loops.
-The answer language is detected in code and stated in the prompt, because
-the model once answered an English question in Persian.
+- `search_documents` -> document agent: policies, deadlines, procedures
+- `query_database` -> SQL agent: numbers about sales, customers and products
+- `calculator`: percentages, differences, fees
 
-**The calculator** ([`calculator.py`](app/tools/calculator.py)) parses the
-expression into a Python AST and evaluates only whitelisted nodes (numbers,
-`+ - * / // % **`, `abs round min max sqrt`). It is not `eval()`, so
-`__import__('os')` is rejected, and huge exponents and division by zero give
-clear errors.
+Routing is the LLM's tool choice. It is guided by the tool descriptions in
+`app/tools/registry.py` and by the system prompt:
 
-**Traceability.** Each response has `route` and `steps` (agent, tool, input,
-output). The server log shows the same for each request (real excerpt):
+- never answer questions about Helix from general knowledge
+- send any policy question to the documents
+- get raw numbers with SQL and do the math with the calculator
+- refuse requests to change data
+
+Multi-step questions take several rounds (SQL -> calculator, or documents ->
+SQL -> calculator), capped at 6.
+
+The calculator parses the expression with `ast` and evaluates only numbers,
+`+ - * / // % **` and `abs round min max sqrt`. So `__import__('os')` is
+rejected, and huge exponents and division by zero give a clear error.
+
+Each response has `route` and `steps` (agent, tool, input, output), and the
+server log shows the same:
 
 ```text
 13:45:55 INFO app.agents.coordinator | [coordinator] route -> sql_agent (query_database) args={'question': 'What was the total delivered revenue in Q1 2026, and ...'}
@@ -343,8 +288,6 @@ output). The server log shows the same for each request (real excerpt):
 13:46:04 INFO app                    | POST /api/v1/ask -> 200 (12802 ms)
 ```
 
----
-
 ## Tests
 
 ```bash
@@ -352,175 +295,131 @@ pytest                                    # locally
 docker compose run --rm assistant pytest  # in the container
 ```
 
-114 tests. All but the retrieval-quality ones run offline in a few seconds,
-with the LLM replaced by a scripted fake ([`tests/fakes.py`](tests/fakes.py)):
+There are 117 tests. All of them except `test_retrieval_quality.py`, which uses
+the real embedding model, run offline in a few seconds with a scripted fake LLM
+(`tests/fakes.py`). They cover:
 
-| File | Covers |
-|---|---|
-| `test_sql_safety.py` | 12 attack patterns rejected by layer 1; writes refused by layer 2 even with layer 1 bypassed; row cap; 3 s timeout on an endless recursive CTE |
-| `test_sql_agent.py` | SQL executed and checked against the DB; self-correction from the error; injected `DELETE` rejected and not retried; prose instead of structure retried |
-| `test_calculator.py` | arithmetic, code-execution attempts, division by zero, huge exponents |
-| `test_preprocessing.py` | header/footer removal, line joining, de-hyphenation, section/bullet detection, chunk splitting |
-| `test_document_agent.py` | citations, threshold guard (LLM never called), `answerable=false`, invalid citation, Persian path |
-| `test_coordinator.py` | the real LangGraph graph: SQL → calculator chain and its trace, document routing, no-tool answers, tool budget |
-| `test_api.py` | 422 on bad input, 503 without a key, 502 on a rejected key, 500 without leaking details |
-| `test_retrieval_quality.py` | with the **real** embedding model and hybrid search: the answering section reaches the LLM for 9 questions; unrelated questions are filtered out |
-| `test_evaluation_metrics.py` | the evaluation's own scoring functions, and the dataset itself: every gold query runs, every expected section exists in the PDFs |
-
-Tests check the logic. How well the whole system answers with a real LLM is
-measured separately by the evaluation below.
-
----
+- the SQL validator against injection patterns
+- the read-only executor, even with the validator bypassed
+- the SQL agent's retry logic and the calculator
+- PDF cleanup and chunking
+- the document agent's guards and the coordinator graph
+- API error handling
+- the evaluation's scoring functions
 
 ## Evaluation
 
+The tests check the logic with a fake model. To see how the whole thing does
+with a real one, `evaluation/` has 75 questions in English and Persian. Their
+gold answers don't come from the system: SQL answers come from hand-written
+queries run directly on the database, and document answers from the PDFs.
+
 ```bash
-python -m evaluation.run --base-url http://localhost:8000   # writes docs/evaluation.md + .json
+python -m evaluation.run --base-url http://localhost:8000 --repeat 3
 ```
 
-[`evaluation/cases.py`](evaluation/cases.py) holds 75 questions (English and
-Persian) with **gold answers that do not come from the system**: SQL gold
-values come from hand-written queries run directly on the database, and
-document references come from the PDFs. Each group is scored differently:
+- 26 document questions: whether the right section is retrieved (hit rate,
+  MRR) and whether the key numbers are in the answer. An LLM judge also checks
+  correctness against the reference and faithfulness to the cited text.
+- 7 questions the documents don't answer, which should get "not found". One is
+  a trap: "volume discount", close to the early payment discount.
+- 22 NL2SQL questions, scored by execution accuracy as in Spider: the returned
+  rows have to match the gold query's rows (extra columns are fine).
+- 13 agent questions: the right components are used (and the wrong ones
+  aren't), and the final number is within 1%.
+- 7 requests to write or bypass the rules: they must be refused, and the
+  database file's checksum must not change.
 
-| Group | n | How it is scored |
-|---|---|---|
-| Document questions | 26 | retrieval rank of the answering section (hit rate, MRR); required numbers/phrases in the answer; **correctness** against a reference and **faithfulness** to the cited sections, judged by an LLM (RAGAS-style) |
-| Not in the documents | 7 | must answer "not found"; one is a near-domain trap ("volume discount") |
-| NL2SQL | 22 | **execution accuracy** as in the Spider benchmark: the returned rows must equal the gold query's rows (extra columns allowed) |
-| Agents, end to end | 13 | **routing** (required components used, wrong ones not) and the **final number** (within 1%) |
-| Safety | 7 | write / bypass requests must be refused, and the database file's checksum must be unchanged after the run |
+Results with gpt-oss:20b at `reasoning_effort=high`, over 3 full runs, since the
+local model isn't deterministic even at temperature 0. The judge is the same
+model.
 
-### Results
-
-gpt-oss:20b (local, `reasoning_effort=high`). Each question was asked in **3 full
-runs**, because the local model is not fully deterministic even at temperature 0.
-The judge is the same model.
-
-| Metric | Result (3 runs) |
+| | 3 runs |
 |---|---|
-| Retrieval: answering section reaches the LLM | 78/78 (100%), MRR 0.92 |
-| RAG: answer correct (LLM judge) | 66/78 (85%); **71/78 (91%) after manual audit** (below) |
-| RAG: answer faithful to its cited sections (LLM judge) | 73/76 (96%) |
-| RAG: required facts present (exact match) | 67/72 (93%) |
-| "Not found" for questions the documents do not cover | 21/21 (100%) |
-| NL2SQL: execution accuracy | 66/66 (100%); no self-correction retry needed |
-| Agents: correct route | 39/39 (100%) |
-| Agents: correct final number / facts | 33/33 (100%) |
-| Safety: write / bypass requests refused | 21/21 (100%); database file unchanged |
-| Latency, median / p95 | documents 4.2 / 7.6 s · SQL 4.3 / 6.7 s · full assistant 7.6 / 16.8 s |
+| right section retrieved | 78/78, MRR 0.92 |
+| document answer correct (judge) | 66/78 (85%), 71/78 (91%) after checking the rejections by hand |
+| faithful to the cited sections (judge) | 73/76 (96%) |
+| key facts present | 67/72 (93%) |
+| "not found" when it should | 21/21 |
+| NL2SQL execution accuracy | 66/66 |
+| agents: correct route | 39/39 |
+| agents: correct final number | 33/33 |
+| write requests refused | 21/21, database unchanged |
+| latency, median / p95 | documents 4.2 / 7.6 s, SQL 4.3 / 6.7 s, full assistant 7.6 / 16.8 s |
 
-Per-question results: [docs/evaluation.md](docs/evaluation.md). Every request and
-response: [docs/evaluation.json](docs/evaluation.json).
+Per-question results are in [docs/evaluation.md](docs/evaluation.md), and the raw
+requests and responses in [docs/evaluation.json](docs/evaluation.json).
 
-**Audit of the 12 negative RAG verdicts.**
-- **5 are judge errors.** "Can a public hospital get 90 days to pay?" got the
-  same correct answer in all 3 runs ("Yes, with written approval of the Chief
-  Financial Officer"); the judge accepted it once and rejected it twice. The
-  inter-city transit time was answered "24 hours", which is correct, but was
-  rejected 3 times because the reference also mentions refrigerated vehicles.
-- **7 are real failures.**
-  - "A pharmacy ordered the wrong strength. Is there a fee?" was answered "no
-    fee" in all 3 runs. The model quotes the right sentence ("5% … not caused
-    by a Helix error, e.g. a customer ordering the wrong strength") and still
-    draws the wrong conclusion. In later spot checks the same request was
-    answered correctly 6/6, so the behaviour is unstable rather than
-    systematic: a reasoning limit of a 20B model.
-  - "A product froze below 0 °C" left out the "notify QA within 1 hour" step
-    in 2 runs.
-  - 2 answers were "not found" for questions answered correctly in the other
-    runs.
+I went through the 12 rejected document answers by hand. Five were the judge's
+mistake. The same correct answer to "Can a public hospital get 90 days to
+pay?" was accepted once and rejected twice. "24 hours" for the inter-city
+transit limit was rejected three times because the reference also mentions
+refrigerated vehicles. The other seven are real failures:
 
-### What the evaluation changed
+- "A pharmacy ordered the wrong strength, is there a fee?" was answered "no
+  fee" in all 3 runs, even though the model quoted the right sentence. Asked
+  again later it was right 6 times out of 6. A 20B model is just unreliable on
+  this one.
+- "A product froze below 0 °C" left out the "notify QA within 1 hour" step
+  twice.
+- Two answers were "not found" for questions that were answered correctly in
+  the other runs.
 
-The first run was made before any of the fixes below. Its raw output is kept
-in [docs/evaluation_run1.json](docs/evaluation_run1.json).
+The first run, before any fixes, also scored 85% on documents
+(`docs/evaluation_run1.json` has its raw output). But it also had a 500 error,
+a wrong route and answers that dropped conditions. What I changed because of
+it:
 
-| | Run 1 (before fixes) | Final (3 runs) |
-|---|---|---|
-| RAG answer correct (judge) | 22/26 (85%) | 66/78 (85%) |
-| "Not found" when it should | 6/7, plus one HTTP 500 | 21/21 |
-| Agents: correct route | 12/13 | 39/39 |
-| Server errors | 1 | 0 |
-| NL2SQL execution accuracy | 22/22 | 66/66 |
+- the document agent quotes first, then answers
+- the prompt asks for conditions and exceptions
+- no arithmetic in the document agent; amounts go to the calculator
+- the answer language is set in code
+- empty model output no longer causes a 500
+- the reasoning effort is a setting
+- the judge prompt is calibrated
 
-The headline RAG number is the same, but the failures are different in kind.
-Run 1's failures were answers that dropped conditions, a crash, and the
-"no fee" misreading. Each finding led to a general change, not a per-question
-patch:
+I wrote the questions and reference answers myself, the judge is the same model
+as the system (`EVAL_JUDGE_MODEL` can point to another one), and the data is
+synthetic. Questions that overlap with the demo scenarios are marked `# seen` in
+`cases.py`. A separate held-out set would be a stronger test.
 
-| Finding | Change |
-|---|---|
-| "No fee" misreading of two neighbouring rules | quote-then-answer (`evidence` field first) |
-| Answers dropped conditions ("only if bought within 12 months") | prompt asks for conditions and exceptions |
-| The model returned an empty response; the API answered 500 | empty or unparsable output is treated as "not found" (document agent) or retried (SQL agent) |
-| The document agent did arithmetic itself | it states rules; amounts go through the calculator |
-| An English question answered in German | the answer language is set in code |
-| The misreading persisted at the default reasoning effort | `LLM_REASONING_EFFORT=high` |
-| The judge counted the user's own numbers as "unsupported" | judge prompt calibrated (see `evaluation/judge.py`) |
+## Some decisions
 
-**Caveats.** I wrote the questions and the reference answers. The judge is the
-system's own model (set `EVAL_JUDGE_MODEL` to use another one). The data is
-synthetic. Most questions were not used while building the system; the few
-that overlap with the demo scenarios are marked `# seen` in `cases.py`. A
-separate held-out set would be the stronger test.
-
----
-
-## Design decisions
-
-- **OpenAI-compatible client instead of a provider SDK**: one setting switches
-  between OpenAI, AvalAI, OpenRouter or a local Ollama/vLLM.
-- **Local CPU embeddings (fastembed) by default**: no per-query cost, works
-  offline, deterministic; the model is in the image. The API backend is one
-  setting away.
-- **LanceDB and SQLite**: both embedded, so the whole system is one container
-  with no external services to start or wait for.
-- **Section-aware chunks** rather than fixed-size windows: a policy rule is
-  never cut in half, and every chunk carries its section title for citations.
-- **Hybrid retrieval with rank fusion**: small embedding models miss exact
-  numbers and units, while BM25 misses paraphrases. Fusing ranks avoids
-  tuning weights between two incomparable score scales.
-- **Structured outputs in `json_schema` mode**: the server constrains
-  generation to the schema, so the output always parses. With forced tool
-  calls (`function_calling`), gpt-oss occasionally wrote malformed JSON and
-  the provider failed the request.
-- **Sub-agents return data, the coordinator writes prose**: the SQL agent
-  returns SQL + rows, which keeps it testable and lets the coordinator chain it
-  with the calculator.
-- **Defence in depth for SQL**: the validator gives good error messages; the
-  database-level guards make safety independent of the validator being perfect.
-- **Decisions the model must not make are made in code**: the answer language,
-  the read-only guarantee, the arithmetic (calculator) and the "not found"
-  threshold. The evaluation showed that leaving these to the model fails
-  occasionally.
-- **Evaluate against independent gold answers, several runs**: a single run
-  of a non-deterministic model can show a question as solved when it isn't,
-  or the reverse.
+- An OpenAI-compatible client instead of a specific SDK, so switching between
+  OpenAI, AvalAI, OpenRouter or a local Ollama is a config change.
+- Local CPU embeddings by default: no cost per query, works offline, and the
+  model ships with the image.
+- LanceDB and SQLite are both embedded, so everything runs in one container.
+- Chunks follow sections instead of fixed windows, so a rule is never split and
+  a citation points to a section.
+- Rank fusion for the hybrid search, so I don't have to weight two scores that
+  aren't on the same scale.
+- Structured output in `json_schema` mode. With `function_calling`, gpt-oss
+  sometimes produced broken JSON and the request failed.
+- Sub-agents return data (SQL and rows, quoted evidence) and the coordinator
+  writes the final answer. They stay testable and easy to chain.
+- Some things are done in code instead of left to the model: the answer
+  language, read-only access, arithmetic and the "not found" threshold.
 
 ## Limitations
 
-- **Small, synthetic corpus.** 4 English PDFs and one SQLite file. For larger
-  corpora: an ANN index, metadata filters and a cross-encoder re-ranker.
-- **No OCR.** Scanned PDFs are detected and skipped.
-- **Quality depends on the LLM.** Evaluated end to end with gpt-oss:20b
-  (local). With a 20B model, a few policy questions are answered correctly in
-  some runs and not in others (see the evaluation audit). Cloud models such as
-  gpt-4o-mini use the same protocol but were not part of the recorded runs.
-- **Latency.** Median 4 s per document or SQL question and 8 s for the full
-  assistant (p95 17 s) with a local 20B model on one GPU, since multi-step
-  questions make 3–4 LLM calls.
-- **Single-turn.** No conversation memory between requests (LangGraph's
-  checkpointer would add it).
-- **Dates are Gregorian** (`YYYY-MM-DD`); Jalali dates in questions are not
-  converted.
-- **No auth, rate limiting or async workers**, by design for this scope.
+- Small synthetic corpus: 4 PDFs and one SQLite file. With more documents I'd
+  add metadata filters and a re-ranker.
+- No OCR; scanned pages are skipped.
+- Quality depends on the model. I only evaluated gpt-oss:20b locally, and a
+  few policy questions flip between right and wrong across runs. gpt-4o-mini and
+  others use the same API but weren't part of the recorded runs.
+- Latency with a local 20B model is about 4 s per document or SQL question. Multi-step
+  questions take around 8 s (p95 17 s), since they need 3 or 4 LLM calls.
+- No conversation memory between requests.
+- Dates are Gregorian; Jalali dates in questions aren't converted.
+- No auth or rate limiting.
 
 ## Credits
 
-The pipeline builds on earlier work of mine: the LangGraph RAG pipeline over
-LanceDB and the tool-calling agent graph from
+Parts of this come from my earlier projects. The LangGraph RAG pipeline over
+LanceDB and the tool-calling agent are from
 [NLP-Foundations-to-Agents](https://github.com/AlirezaShG/NLP-Foundations-to-Agents)
-(notebooks 06 and 07), and the FastAPI service layout and embedding model from
+(notebooks 06 and 07). The FastAPI layout and the embedding model are from
 [pharma-risk-intelligence](https://github.com/AlirezaShG/pharma-risk-intelligence).
-Helix Pharma Distribution, its documents, customers and figures are fictional.
+Helix and everything about it is fictional.
