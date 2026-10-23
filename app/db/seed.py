@@ -1,11 +1,4 @@
-"""
-Creates the SQLite sales database: schema.sql + deterministic sample data.
-
-`random.Random(2026)` produces exactly the same rows on every machine, so the
-example answers in the README stay valid and the tests can check exact numbers.
-
-Run it on its own with:  python -m app.db.seed --force
-"""
+"""Creates the SQLite sales database: schema.sql + deterministic sample data."""
 
 import argparse
 import random
@@ -17,7 +10,6 @@ from app.core.config import ROOT_DIR, get_settings
 
 SCHEMA_PATH = ROOT_DIR / "data" / "database" / "schema.sql"
 
-# (product_id, name, category, list price in IRR, requires_cold_chain)
 PRODUCTS = [
     (1, "Amoxicillin/Clavulanate 625 mg tablets", "antibiotic", 1_450_000, 0),
     (2, "Azithromycin 250 mg capsules", "antibiotic", 980_000, 0),
@@ -33,7 +25,6 @@ PRODUCTS = [
     (12, "Adalimumab 40 mg prefilled syringe", "biologic", 78_000_000, 1),
 ]
 
-# (customer_id, name, customer_type, city, credit_limit in IRR)
 CUSTOMERS = [
     (1, "Narges Pharmacy", "pharmacy", "Tehran", 600_000_000),
     (2, "Azadi Pharmacy", "pharmacy", "Tehran", 450_000_000),
@@ -55,14 +46,14 @@ CUSTOMERS = [
 FIRST_DAY, LAST_DAY = date(2026, 1, 1), date(2026, 9, 30)
 ORDERS_PER_CUSTOMER = {"pharmacy": (14, 22), "clinic": (10, 16), "hospital": (22, 30)}
 PACKS_PER_LINE = {"pharmacy": (5, 40), "clinic": (5, 30), "hospital": (20, 120)}
-HOSPITAL_DISCOUNT = 0.05  # hospitals pay 5% below list price (see schema.sql)
+HOSPITAL_DISCOUNT = 0.05
 
 
 def generate_rows(seed: int = 2026) -> tuple[list[tuple], list[tuple]]:
     """Return (orders, order_items) rows, ordered by date and numbered from 1001."""
     rng = random.Random(seed)
     day_count = (LAST_DAY - FIRST_DAY).days + 1
-    drafts = []  # (order_date, customer_id, status, payment_status, [(product_id, qty, price)])
+    drafts = []
 
     for customer_id, _, customer_type, _, _ in CUSTOMERS:
         for _ in range(rng.randint(*ORDERS_PER_CUSTOMER[customer_type])):
@@ -70,7 +61,6 @@ def generate_rows(seed: int = 2026) -> tuple[list[tuple], list[tuple]]:
             status = rng.choices(["delivered", "returned", "cancelled"], weights=[90, 6, 4])[0]
 
             if status == "delivered":
-                # Old invoices are almost always paid; recent ones often are not yet.
                 age_days = (LAST_DAY - order_date).days
                 unpaid_probability = 0.6 if age_days < 60 else 0.05
                 payment_status = "unpaid" if rng.random() < unpaid_probability else "paid"
@@ -85,7 +75,7 @@ def generate_rows(seed: int = 2026) -> tuple[list[tuple], list[tuple]]:
                 if category == "biologic":
                     low, high = 1, 6
                 elif cold_chain:
-                    high = max(low, high // 4)  # expensive fridge items are ordered in small numbers
+                    high = max(low, high // 4)
                 discount = HOSPITAL_DISCOUNT if customer_type == "hospital" else 0.0
                 lines.append((product_id, rng.randint(low, high), round(list_price * (1 - discount))))
 
@@ -101,13 +91,11 @@ def generate_rows(seed: int = 2026) -> tuple[list[tuple], list[tuple]]:
 
 
 def build_database(path: Path, force: bool = False) -> bool:
-    """Create the database at `path`. Returns False if it already existed."""
+    """Create the database at `path`."""
     if path.exists() and not force:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Build into a temporary file and rename at the end, so a crash halfway
-    # never leaves a half-filled database behind.
     tmp_path = path.with_suffix(".tmp")
     tmp_path.unlink(missing_ok=True)
     orders, items = generate_rows()

@@ -10,8 +10,6 @@ from app.db.sql_safety import InvalidSQLError, UnsafeSQLError, validate_select
 TABLES = {"products", "customers", "orders", "order_items"}
 
 
-# ---- layer 1: static validation ---------------------------------------------
-
 @pytest.mark.parametrize("sql", [
     "SELECT COUNT(*) FROM orders",
     "SELECT c.city, SUM(oi.quantity * oi.unit_price) AS revenue FROM orders o "
@@ -50,9 +48,6 @@ def test_garbage_is_invalid_not_unsafe(sql):
     with pytest.raises(InvalidSQLError):
         validate_select(sql, TABLES)
 
-
-# ---- layer 2: the database itself refuses writes ----------------------------
-# These call the executor directly, i.e. as if layer 1 had been bypassed.
 
 def test_executor_runs_a_select(db_path):
     result = run_read_only(db_path, "SELECT COUNT(*) AS n FROM customers")

@@ -1,16 +1,4 @@
-"""
-LLM-as-judge for the checks that cannot be done by string matching (RAGAS-style metrics).
-
-    correctness   does the answer state the essential facts of the reference answer?
-    faithfulness  is every claim in the answer supported by the sections it cites?
-    refusal       did the assistant refuse a request to change data, without claiming it did it?
-
-Each check returns {verdict, reason} as structured output, so the score is a count of
-verdicts, and every "false" comes with a reason that ends up in the report.
-
-Caveat, stated in the report as well: by default the judge is the same model as the system
-(a local model judging itself may be lenient). Set EVAL_JUDGE_MODEL to use a different one.
-"""
+"""LLM-as-judge for correctness, faithfulness and refusals."""
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage

@@ -47,7 +47,7 @@ def test_execution_error_triggers_one_self_correction(db_path):
     answer = agent.run("How many orders?")
 
     assert answer.status == "ok" and answer.attempts == 2
-    feedback = llm.calls[1][-1].content  # the retry prompt shows the model its error
+    feedback = llm.calls[1][-1].content
     assert "no such column: total" in feedback
 
 
@@ -73,7 +73,6 @@ def test_dangerous_sql_from_the_llm_is_rejected_and_not_retried(db_path):
 
 
 def test_prose_instead_of_structure_is_retried(db_path):
-    # None is what LangChain returns when the model answers in prose instead of calling the function.
     agent, llm = make_agent(db_path, None, SQLDraft(sql="SELECT COUNT(*) AS n FROM products", reason="count"))
     answer = agent.run("How many products?")
     assert answer.status == "ok" and answer.rows == [[12]] and answer.attempts == 2

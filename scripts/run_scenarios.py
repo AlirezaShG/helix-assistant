@@ -1,12 +1,4 @@
-"""
-Sends the demo scenarios to a running API and records the real responses.
-
-    docker compose up -d          # or: uvicorn app.main:app
-    python scripts/run_scenarios.py
-
-Writes docs/sample_outputs.md (readable) and docs/sample_outputs.json (raw).
-Only the standard library is used, so it runs from any Python 3.10+.
-"""
+"""Sends the demo scenarios to a running API and records the real responses."""
 
 import argparse
 import json
@@ -77,7 +69,6 @@ def to_markdown(category: str, endpoint: str, question: str, status: int, body: 
             lines.append(f"{i}. `{step['agent']}` ← `{json.dumps(step['input'], ensure_ascii=False)}`"
                          f" — {step_summary(step)}")
             if output.get("sql"):
-                # Indent every line so the code block stays inside the numbered list item.
                 lines += ["", "   ```sql", textwrap.indent(output["sql"], "   "), "   ```"]
             if step["agent"] == "sql_agent" and output.get("rows"):
                 lines.append(f"   Rows: `{json.dumps(output['rows'][:5], ensure_ascii=False)}`")

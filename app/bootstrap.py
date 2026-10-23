@@ -1,17 +1,4 @@
-"""
-Data preparation. Runs at startup, and once more at Docker build time so the
-container starts with everything ready.
-
-1. Create the SQLite database if it does not exist (app/db/seed.py).
-2. Build the vector index if it does not exist or is out of date.
-
-"Out of date" is decided with a fingerprint of everything the index depends
-on: the bytes of every PDF, the embedding model, the chunk size and the index
-format. Edit or add a PDF, restart, and it is re-indexed automatically;
-otherwise startup skips the work.
-
-Run it on its own with:  python -m app.bootstrap
-"""
+"""Data preparation."""
 
 import hashlib
 import logging
@@ -25,7 +12,6 @@ from app.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-# Bump when preprocessing, chunking or the index layout changes, to force a rebuild.
 INDEX_FORMAT = "2-hybrid"
 
 

@@ -19,7 +19,7 @@ def test_answer_is_grounded_and_cites_the_retrieved_section(hash_store):
 
 
 def test_unrelated_question_never_reaches_the_llm(hash_store):
-    llm = FakeChatModel()  # no scripted answers: any LLM call would fail the test
+    llm = FakeChatModel()
     agent = DocumentAgent(llm, hash_store, top_k=3, min_score=0.3)
 
     result = agent.run("What is the capital of France?")
@@ -35,13 +35,12 @@ def test_llm_saying_not_answerable_gives_not_found(hash_store):
 
 
 def test_prose_instead_of_structure_gives_not_found(hash_store):
-    llm = FakeChatModel(structured=[None])  # the model ignored the required structure
+    llm = FakeChatModel(structured=[None])
     agent = DocumentAgent(llm, hash_store, min_score=0.0)
     assert not agent.run("payment terms for pharmacies").found
 
 
 def test_empty_model_response_gives_not_found_instead_of_an_error(hash_store):
-    # LangChain raises ValueError when the response has no content at all (seen with gpt-oss).
     llm = FakeChatModel(structured=[ValueError("Structured Output response does not have a 'parsed' field")])
     agent = DocumentAgent(llm, hash_store, min_score=0.0)
     assert not agent.run("Does Helix give a volume discount?").found
@@ -56,7 +55,6 @@ def test_quoted_evidence_is_returned(hash_store):
 
 
 def test_answer_without_a_valid_citation_is_not_trusted(hash_store):
-    # The model claims an answer but cites an excerpt id that does not exist.
     llm = FakeChatModel(structured=[GroundedAnswer(answerable=True, answer="30 days", cited_ids=[99])])
     agent = DocumentAgent(llm, hash_store, min_score=0.0)
     assert not agent.run("payment terms for pharmacies").found

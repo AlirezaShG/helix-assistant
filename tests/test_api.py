@@ -1,8 +1,4 @@
-"""HTTP layer: input validation, error mapping and response shape.
-
-The app's startup (which builds the index with the real embedding model) is not
-run here; a stub replaces the services.
-"""
+"""HTTP layer: input validation, error mapping and response shape."""
 
 import httpx
 import openai
@@ -37,7 +33,6 @@ class StubCoordinator:
 
 @pytest.fixture
 def client():
-    # raise_server_exceptions=False: let the app's own error handlers answer.
     return TestClient(app, raise_server_exceptions=False)
 
 

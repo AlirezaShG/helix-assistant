@@ -1,16 +1,4 @@
-"""
-Runs the evaluation set (evaluation/cases.py) against a running API and writes
-docs/evaluation.md (readable report) and docs/evaluation.json (every response, for auditing).
-
-    python -m evaluation.run                                  # API on http://localhost:8000
-    python -m evaluation.run --base-url http://localhost:8001
-
-Needs:
-- the API, running locally or in Docker;
-- the local database file (data/database/helix.db, made by `python -m app.bootstrap`): gold SQL
-  runs on it directly. The data is generated deterministically, so it equals the API's copy;
-- an LLM for the judge: the model configured in .env, or EVAL_JUDGE_MODEL.
-"""
+"""Runs the evaluation set against a running API; writes docs/evaluation.md and .json."""
 
 import argparse
 import hashlib
@@ -33,7 +21,6 @@ from evaluation.judge import Judge, Verdict
 from evaluation.metrics import contains_number, has_fact, results_match, retrieval_rank
 
 DOCS_DIR = ROOT_DIR / "docs"
-# Call the API directly, never through a system proxy: a VPN client's proxy answers 502 for localhost.
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -63,7 +50,6 @@ class Evaluation:
         self.section_texts = self._section_texts()
         self.latency: dict[str, list[float]] = {}
 
-    # ---- helpers ----------------------------------------------------------------
 
     def ask(self, endpoint: str, question: str) -> tuple[int, dict]:
         status, body, seconds = call(self.base_url, endpoint, question)
@@ -78,7 +64,7 @@ class Evaluation:
             return [list(row) for row in conn.execute(sql).fetchall()]
 
     def _section_texts(self) -> dict[tuple[str, str], str]:
-        """(document, section) -> text, built with the same pipeline as the index, for the faithfulness judge."""
+        """(document, section) -> text, for the faithfulness judge."""
         texts: dict[tuple[str, str], str] = {}
         for doc in parse_pdfs(sorted(self.settings.documents_dir.glob("*.pdf"))):
             for chunk in chunk_document(doc, self.settings.chunk_max_chars):
@@ -88,7 +74,6 @@ class Evaluation:
     def database_checksum(self) -> str:
         return hashlib.sha256(self.settings.database_path.read_bytes()).hexdigest()
 
-    # ---- the five groups -----------------------------------------------------------
 
     def documents(self) -> list[dict]:
         rows = []
@@ -152,7 +137,7 @@ class Evaluation:
                          if expected is not None else None)
             facts_ok = all(has_fact(answer, f) for f in case.facts) if case.facts else None
             checks = [check for check in (number_ok, facts_ok) if check is not None]
-            answer_ok = all(checks) if checks else None  # None: nothing to check (out-of-scope questions)
+            answer_ok = all(checks) if checks else None
 
             rows.append({
                 "question": case.question, "http": status, "route": route,
@@ -200,12 +185,6 @@ class Evaluation:
         }
 
 
-# ---- report -------------------------------------------------------------------------
-# The model is not fully deterministic (even at temperature 0, GPU inference varies slightly),
-# so the evaluation can be repeated (--repeat N). Every metric is then reported per run, and
-# every question shows in how many runs it passed.
-
-# (label, group, field): share of cases in `group` whose `field` is True (None = not applicable).
 METRICS = [
     ("Retrieval: answer section reaches the LLM (hybrid top-k, above threshold)", "documents", "reached_llm"),
     ("RAG: answer correct (LLM judge vs reference)", "documents", "correct"),

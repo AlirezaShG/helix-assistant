@@ -1,13 +1,4 @@
-"""
-Test doubles, so the logic can be tested offline, fast and deterministically.
-
-- FakeChatModel replaces the LLM: it returns pre-scripted answers and records
-  what it was asked. It supports the three ways the code uses an LLM:
-  .invoke(), .with_structured_output(...).invoke() and .bind_tools(...).invoke().
-- HashEmbedder replaces the embedding model with a bag-of-words vector, so
-  "late payment fee" is close to a chunk containing those words. Crude, but
-  enough to test the retrieval plumbing without downloading a model.
-"""
+"""Test doubles, so the logic can be tested offline, fast and deterministically."""
 
 import hashlib
 import math
@@ -38,9 +29,12 @@ class FakeChatModel:
                 if not model.structured:
                     raise AssertionError("structured output requested more often than scripted")
                 result = model.structured.pop(0)
-                if isinstance(result, Exception):  # script a failure, e.g. an unparsable response
+                if isinstance(result, Exception):
                     raise result
                 return result
+
+            def with_fallbacks(self, fallbacks, **kw):
+                return self
 
         return _Structured()
 

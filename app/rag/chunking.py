@@ -1,17 +1,4 @@
-"""
-Section-aware chunking.
-
-Policy documents are organised in numbered sections, and one section is
-usually one rule ("5. Late payment"). Cutting at a fixed character count would
-split rules in the middle, so we cut along the document's own structure:
-
-- every section becomes one chunk;
-- a section longer than `max_chars` is split between paragraphs/bullets, never
-  inside one;
-- every chunk starts with "<document title> > <section heading>", so a chunk
-  still makes sense on its own (and its embedding knows what it is about),
-  even when the paragraph itself only says "Overdue invoices incur ...".
-"""
+"""Section-aware chunking."""
 
 from dataclasses import dataclass
 
@@ -25,7 +12,7 @@ class Chunk:
     title: str  # document title
     section: str  # section heading
     page: int  # page where the chunk starts
-    text: str  # what gets embedded and shown to the LLM
+    text: str
 
 
 def chunk_document(doc: ParsedDocument, max_chars: int = 900) -> list[Chunk]:
@@ -62,8 +49,7 @@ def chunk_document(doc: ParsedDocument, max_chars: int = 900) -> list[Chunk]:
 
 
 def _group_by_section(doc: ParsedDocument) -> list[tuple[str, list[Block]]]:
-    """[(heading, blocks under it)]. Text before the first heading goes under
-    'Introduction'."""
+    """[(heading, blocks under it)]."""
     sections: list[tuple[str, list[Block]]] = []
     for block in doc.blocks:
         if block.kind == "heading":

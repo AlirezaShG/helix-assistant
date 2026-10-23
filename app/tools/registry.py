@@ -1,21 +1,4 @@
-"""
-The three tools the coordinator can call.
-
-Two of them wrap a sub-agent, one is a plain function:
-
-    search_documents  -> DocumentAgent (RAG over the policy PDFs)
-    query_database    -> SQLAgent      (NL2SQL over the sales database)
-    calculator        -> calculate()   (safe arithmetic)
-
-The docstrings are not just documentation: LangChain sends them to the LLM as
-the tool descriptions, and the LLM picks a tool by reading them. That is how
-the routing works, so they say precisely what each tool knows about.
-
-Every tool returns JSON. Expected failures (nothing found, unsafe SQL,
-division by zero ...) come back as JSON with an "error" field, so the
-coordinator can explain them. Unexpected failures (e.g. the LLM provider is
-down) are raised and reach the API's error handlers.
-"""
+"""The three tools the coordinator can call."""
 
 import json
 import logging
@@ -30,14 +13,13 @@ from app.tools.calculator import CalculatorError, calculate
 
 logger = logging.getLogger(__name__)
 
-# Which component each tool belongs to; used in the logs and in the API's "route" field.
 AGENT_FOR_TOOL = {
     "search_documents": "document_agent",
     "query_database": "sql_agent",
     "calculator": "calculator",
 }
 
-ROWS_SHOWN_TO_LLM = 20  # enough for any summary; keeps the prompt small
+ROWS_SHOWN_TO_LLM = 20
 
 
 def _to_json(payload: dict, started: float) -> str:
@@ -61,7 +43,7 @@ def build_tools(document_agent: DocumentAgent, sql_agent: SQLAgent) -> list[Base
             result = document_agent.run(question).to_dict()
         except IndexNotReadyError as exc:
             result = {"found": False, "error": str(exc)}
-        result.pop("retrieved", None)  # debugging detail, not needed by the LLM
+        result.pop("retrieved", None)
         return _to_json(result, started)
 
     @tool

@@ -1,17 +1,4 @@
-"""
-Builds the description of the database that the NL2SQL prompt contains.
-
-Two parts:
-  1. schema.sql itself. DDL with comments is the most compact and precise way
-     to explain tables, keys and the meaning of each column to an LLM.
-  2. The actual values of the low-cardinality text columns (cities, customer
-     types, statuses ...) plus customer/product names and the date range. With
-     them the model writes `city = 'Tehran'` for a Persian "تهران" instead of
-     guessing a spelling.
-
-This is trusted code (no LLM involved), so it uses a plain read-only
-connection rather than the locked-down executor.
-"""
+"""Builds the description of the database that the NL2SQL prompt contains."""
 
 import sqlite3
 from contextlib import closing
@@ -19,7 +6,7 @@ from pathlib import Path
 
 from app.db.seed import SCHEMA_PATH
 
-MAX_DISTINCT_VALUES = 20  # list a text column's values only if it has at most this many
+MAX_DISTINCT_VALUES = 20
 
 
 def describe_database(db_path: Path) -> str:

@@ -1,16 +1,4 @@
-"""
-Generates the four sample policy PDFs in data/documents/.
-
-The PDFs are committed, so you only need this script if you want to change
-their content. It needs reportlab (requirements-dev.txt):
-
-    python scripts/make_sample_pdfs.py
-
-The documents belong to a fictional company, Helix Pharma Distribution. Each
-page carries a repeated header and a "Page X of Y" footer on purpose: real
-internal documents look like this, and removing that boilerplate is one of the
-preprocessing steps in app/rag/pdf_preprocessing.py.
-"""
+"""Generates the four sample policy PDFs in data/documents/."""
 
 from pathlib import Path
 
@@ -23,8 +11,6 @@ OUT_DIR = Path(__file__).resolve().parents[1] / "data" / "documents"
 
 HEADER = "Helix Pharma Distribution  |  Internal use only"
 
-# Each document: file name, code, title, version, effective date, sections.
-# A section is (heading, [paragraphs]); a paragraph starting with "- " is a bullet.
 DOCUMENTS = [
     {
         "file": "returns_and_recalls_policy.pdf",
@@ -275,7 +261,6 @@ def render(doc: dict, total_pages: int) -> int:
 
 
 def build_pdf(doc: dict) -> Path:
-    # Render twice: the first pass only counts pages so the footer can say "Page X of Y".
     page_count = render(doc, total_pages=0)
     render(doc, total_pages=page_count)
     return OUT_DIR / doc["file"]

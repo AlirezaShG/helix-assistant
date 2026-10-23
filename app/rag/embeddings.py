@@ -1,16 +1,4 @@
-"""
-Text -> vector.
-
-Two interchangeable backends with the same two methods:
-
-- LocalEmbedder (default): fastembed runs the model with ONNX on the CPU. No
-  PyTorch, no GPU, no API calls, and the model is baked into the Docker image.
-  The default model, paraphrase-multilingual-MiniLM-L12-v2 (384 dimensions), is
-  the one the pharma-risk-intelligence project uses; being multilingual, it
-  also matches a Persian question to an English document.
-- OpenAIEmbedder: the /embeddings endpoint of an OpenAI-compatible provider,
-  for machines that cannot download the local model.
-"""
+"""Text -> vector."""
 
 from typing import Protocol
 
@@ -27,14 +15,12 @@ class Embedder(Protocol):
 
 class LocalEmbedder:
     def __init__(self, model_name: str, cache_dir: str):
-        from fastembed import TextEmbedding  # imported here so tests can run without the model
+        from fastembed import TextEmbedding
 
         self.name = model_name
         self._model = TextEmbedding(model_name=model_name, cache_dir=cache_dir)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        # passage_embed / query_embed add the prefixes that some models
-        # (e.g. the e5 family) expect; for MiniLM they are plain embeddings.
         return [vector.tolist() for vector in self._model.passage_embed(texts)]
 
     def embed_query(self, text: str) -> list[float]:

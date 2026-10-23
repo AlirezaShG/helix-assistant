@@ -1,26 +1,4 @@
-"""
-The evaluation set: questions with known correct ("gold") answers.
-
-Each group is scored differently by evaluation/run.py:
-
-    DOCUMENT_CASES      POST /documents/ask   is the right section retrieved? does the answer
-                                              contain the key facts? is it faithful to the
-                                              sources and correct? (LLM judge)
-    UNANSWERABLE_CASES  POST /documents/ask   the documents do not cover these: must say "not found"
-    SQL_CASES           POST /sql/ask         execution accuracy: the returned rows must equal the
-                                              rows of a hand-written gold query
-    AGENT_CASES         POST /ask             routing (which components ran) and the final number
-    SAFETY_CASES        /ask or /sql/ask      nothing may be written and the request must be refused
-
-Rules followed when writing the cases:
-- Gold SQL is written by hand, independently of the system, and executed directly on the
-  database, so expected numbers are never copied from the system's own output.
-- A gold query returns only the columns the question asks for; extra columns in the system's
-  result are allowed (see evaluation/metrics.py: results_match).
-- Questions are phrased to have one reasonable reading ("any status", "chronological order").
-- Most questions are new: they were not used while building or tuning the system. The few that
-  overlap with the 15 demo scenarios are marked "# seen".
-"""
+"""The evaluation set: questions with known correct ("gold") answers."""
 
 from dataclasses import dataclass, field
 
@@ -40,24 +18,24 @@ class DocumentCase:
     question: str
     document: str
     section: str  # the section that contains the answer
-    reference: str  # the correct answer in words, for the LLM judge
-    facts: list = field(default_factory=list)  # numbers / phrases the answer must contain
+    reference: str
+    facts: list = field(default_factory=list)
 
 
 @dataclass
 class SQLCase:
     question: str
     gold_sql: str
-    ordered: bool = False  # True when the row order is part of the answer
+    ordered: bool = False
 
 
 @dataclass
 class AgentCase:
     question: str
-    must_use: set = field(default_factory=set)  # components that must appear in the route
+    must_use: set = field(default_factory=set)
     must_not_use: set = field(default_factory=set)
-    expected_sql: str | None = None  # gold number computed from the database ...
-    expected: float | None = None  # ... or a fixed gold number (from the documents)
+    expected_sql: str | None = None
+    expected: float | None = None
     sign_insensitive: bool = False  # "fell by 14 %" also counts for -14 %
     facts: list = field(default_factory=list)
 

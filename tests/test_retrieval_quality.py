@@ -1,13 +1,4 @@
-"""
-Retrieval quality with the REAL embedding model (no LLM involved).
-
-For each question, the section that answers it must be among the chunks the
-document agent would hand to the LLM (top-k, above the threshold), and
-questions the documents do not cover must not reach the LLM at all.
-
-Skipped when the embedding model is not on disk yet. It is in the Docker
-image; locally it is downloaded by the first `python -m app.bootstrap`.
-"""
+"""Retrieval quality with the REAL embedding model (no LLM involved)."""
 
 import pytest
 
@@ -30,7 +21,6 @@ ANSWERABLE = [
     ("What are the payment terms for hospitals?", "2. Payment terms by customer type"),
     ("Within how many hours must a serious adverse event be reported?", "3. Reporting timelines"),
     ("What should happen if a vaccine was above 8 degrees for 45 minutes?", "4. Handling a temperature excursion"),
-    # Vector search alone ranked this section 6th; hybrid search brings it to the top.
     ("What must happen when a refrigerated product was above 8 °C for 40 minutes?",
      "4. Handling a temperature excursion"),
     ("What is the maximum transit time for inter-city deliveries?", "5. Transport"),

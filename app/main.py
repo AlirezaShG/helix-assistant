@@ -1,9 +1,4 @@
-"""
-FastAPI application: startup, logging, routes and error handling.
-
-Start it with:  uvicorn app.main:app --reload
-Interactive API docs: http://localhost:8000/docs
-"""
+"""FastAPI application: startup, logging, routes and error handling."""
 
 import logging
 import time
@@ -28,8 +23,6 @@ logger = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Builds the database and the vector index if needed (a few seconds; already
-    # done at image build time in Docker).
     app.state.services = Services(settings)
     yield
 
@@ -51,10 +44,6 @@ async def log_requests(request: Request, call_next):
                 response.status_code, (time.perf_counter() - started) * 1000)
     return response
 
-
-# ---- error handling ---------------------------------------------------------
-# Each known failure becomes a JSON error with a clear message and a fitting
-# HTTP status. Nothing leaks a stack trace to the caller.
 
 @app.exception_handler(LLMNotConfiguredError)
 async def llm_not_configured(_: Request, exc: LLMNotConfiguredError) -> JSONResponse:

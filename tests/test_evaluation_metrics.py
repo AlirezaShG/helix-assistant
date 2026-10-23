@@ -8,8 +8,6 @@ from evaluation import cases
 from evaluation.metrics import contains_number, extract_numbers, has_fact, results_match, retrieval_rank
 
 
-# ---- reading numbers out of answers -------------------------------------------
-
 @pytest.mark.parametrize("text, expected", [
     ("Late fee: **1 752 750 IRR**", [1752750]),  # spaces as thousands separators
     ("1,752,750 IRR", [1752750]),
@@ -36,8 +34,6 @@ def test_facts_match_numbers_exactly_and_phrases_as_text():
     assert not has_fact("within 15 minutes", 5)  # 5 is not "15"
     assert has_fact("Label it **DO NOT USE**.", "DO NOT USE")
 
-
-# ---- execution accuracy -----------------------------------------------------------
 
 def test_results_match_allows_extra_columns_and_any_order():
     gold = [["Tehran"]]
@@ -66,8 +62,6 @@ def test_retrieval_rank():
     assert retrieval_rank(retrieved, "credit_and_payment_terms.pdf", "2. Payment terms by customer type") == 2
     assert retrieval_rank(retrieved, "cold_chain_sop.pdf", "5. Transport") is None
 
-
-# ---- the dataset itself -------------------------------------------------------------
 
 def test_every_expected_section_exists_in_the_pdfs(chunks):
     sections = {(c.source, c.section) for c in chunks}

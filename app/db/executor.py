@@ -1,16 +1,4 @@
-"""
-Layer 2 of SQL safety: run a query so that SQLite itself refuses anything but reading.
-
-Three independent mechanisms, any one of which blocks a write:
-  1. the file is opened read-only (`mode=ro` URI): SQLite cannot write to it;
-  2. an authorizer callback approves only SELECT / READ / FUNCTION actions,
-     checked by SQLite for every operation while compiling the statement;
-  3. Python's sqlite3 `execute()` refuses to run more than one statement.
-
-Two guards against expensive queries:
-  - a progress handler aborts the query after `timeout_seconds`;
-  - at most `max_rows` rows are fetched (the rest is reported as truncated).
-"""
+"""SQL safety layer 2: SQLite itself refuses anything but reading."""
 
 import sqlite3
 import time
@@ -31,11 +19,9 @@ class SQLPermissionError(SQLExecutionError):
 class QueryResult:
     columns: list[str]
     rows: list[list] = field(default_factory=list)
-    truncated: bool = False  # True if the query returned more than max_rows rows
+    truncated: bool = False
 
 
-# Actions the authorizer lets through. Everything else (INSERT, UPDATE, DELETE,
-# CREATE, DROP, PRAGMA, ATTACH, TRANSACTION ...) is denied.
 ALLOWED_ACTIONS = {
     sqlite3.SQLITE_SELECT,
     sqlite3.SQLITE_READ,
@@ -63,7 +49,6 @@ def run_read_only(db_path: Path, sql: str, max_rows: int = 200, timeout_seconds:
         conn.set_authorizer(_authorizer)
 
         deadline = time.monotonic() + timeout_seconds
-        # Called by SQLite every 10,000 virtual-machine steps; a non-zero return aborts the query.
         conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 10_000)
 
         cursor = conn.execute(sql)
@@ -81,7 +66,7 @@ def run_read_only(db_path: Path, sql: str, max_rows: int = 200, timeout_seconds:
         if "interrupted" in message:
             message = f"query took longer than {timeout_seconds} s and was stopped"
         raise SQLExecutionError(message) from exc
-    except sqlite3.Warning as exc:  # e.g. "You can only execute one statement at a time."
+    except sqlite3.Warning as exc:
         raise SQLExecutionError(str(exc)) from exc
     finally:
         conn.close()

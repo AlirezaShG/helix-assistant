@@ -1,23 +1,9 @@
-"""
-HTTP endpoints.
-
-    POST /api/v1/ask             the full assistant (coordinator + sub-agents + calculator)
-    POST /api/v1/documents/ask   the document sub-agent alone (RAG)
-    POST /api/v1/sql/ask         the SQL sub-agent alone (NL2SQL; returns SQL + rows)
-    GET  /api/v1/health          readiness of the index, the database and the LLM config
-
-Convention: the HTTP status describes the *request* (422 invalid input, 503 not
-configured, 502 provider failure ...). The outcome of a valid question, such
-as "not found in the documents" or "query rejected as unsafe", is a normal 200
-answer with `found` / `status` saying so.
-
-The handlers are plain `def` functions: FastAPI runs them in a thread pool,
-so the blocking LLM calls do not freeze the server.
-"""
+"""HTTP endpoints."""
 
 from fastapi import APIRouter, Depends, Request
 
 from app.api.schemas import AskResponse, DocumentResponse, QuestionRequest, SQLResponse
+from app.core.llm import is_local
 from app.services import Services
 
 router = APIRouter()
@@ -34,7 +20,7 @@ def health(services: Services = Depends(get_services)) -> dict:
         "status": "ok" if services.store is not None else "degraded",
         "documents_indexed": services.store.count() if services.store else 0,
         "database_ready": settings.database_path.exists(),
-        "llm_configured": bool(settings.llm_api_key),
+        "llm_configured": bool(settings.llm_api_key) or is_local(settings.llm_base_url),
         "llm_model": settings.llm_model,
         "embedding_model": settings.embedding_model,
         "startup_error": services.startup_error,

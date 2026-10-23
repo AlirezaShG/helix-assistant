@@ -1,11 +1,4 @@
-"""
-Creates the long-lived objects once and hands them to the API.
-
-Data preparation happens when the app starts. Everything that needs the LLM is
-created lazily, on first use: the API therefore starts, and /health answers,
-even before an API key is configured. A request that needs the LLM then gets a
-clear 503 instead of the whole service failing to boot.
-"""
+"""Creates the long-lived objects once and hands them to the API."""
 
 import logging
 from functools import cached_property
@@ -29,7 +22,7 @@ class Services:
         self.startup_error: str | None = None
         try:
             self.store = prepare_data(settings, create_embedder(settings))
-        except Exception as exc:  # keep the API up; /health and the 503 handler report the problem
+        except Exception as exc:
             logger.exception("Document index could not be prepared")
             self.startup_error = f"{type(exc).__name__}: {exc}"
 

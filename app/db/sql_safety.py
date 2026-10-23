@@ -1,21 +1,4 @@
-"""
-Layer 1 of SQL safety: static validation of LLM-generated SQL before it runs.
-
-The SQL is written by a language model that reads user text, so it is
-untrusted input. The query is parsed with sqlglot, a real SQL parser rather
-than keyword matching: `SELECT 'drop table'` passes, and a DELETE hidden inside
-a CTE does not. A query is accepted only if:
-
-  - it is exactly ONE statement;
-  - that statement is a query (SELECT / WITH ... SELECT / UNION ...);
-  - nothing inside it writes, changes the schema or talks to the engine
-    (INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, PRAGMA, ATTACH, SELECT INTO ...);
-  - it reads only the business tables (so no peeking at sqlite_master);
-  - it calls no dangerous function (load_extension, ...).
-
-Layer 2 (app/db/executor.py) enforces read-only inside SQLite itself, so even
-a gap in this module could not change data. The two layers are deliberate.
-"""
+"""SQL safety layer 1: validate LLM-generated SQL before it runs."""
 
 import sqlglot
 from sqlglot import exp
@@ -23,15 +6,13 @@ from sqlglot.errors import ParseError
 
 
 class UnsafeSQLError(ValueError):
-    """The query is syntactically fine but not allowed (writes, unknown tables...).
-    Not retried: refusing is the correct outcome."""
+    """The query is syntactically fine but not allowed (writes, unknown tables...)."""
 
 
 class InvalidSQLError(ValueError):
-    """The query does not parse. Worth one retry with the error message."""
+    """The query does not parse."""
 
 
-# Statement / clause types that must never appear anywhere in the tree.
 FORBIDDEN_NODES = (
     exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.Drop, exp.Create, exp.Alter,
     exp.TruncateTable, exp.Pragma, exp.Attach, exp.Detach, exp.Command, exp.Transaction,
@@ -67,8 +48,6 @@ def validate_select(sql: str, allowed_tables: set[str]) -> str:
             if name in FORBIDDEN_FUNCTIONS:
                 raise UnsafeSQLError(f"The function {name}() is not allowed.")
 
-    # Names defined by WITH (CTEs) are fine to select from; everything else
-    # must be one of the business tables, in the main database.
     cte_names = {cte.alias.lower() for cte in tree.find_all(exp.CTE)}
     for table in tree.find_all(exp.Table):
         name, schema = table.name.lower(), table.db.lower()

@@ -1,26 +1,4 @@
-"""
-PDF -> clean, structured text blocks.
-
-Raw pypdf output is not good enough to embed directly. Each step below fixes a
-concrete problem with it:
-
-1. Extraction per page (pypdf). Pages without a text layer (scanned images)
-   are reported and skipped; OCR is out of scope here. The Persian legal RAG
-   project used DeepSeek-OCR for that case, and it could be plugged in here.
-2. Unicode NFKC normalisation: ligatures such as "ﬁ" become "fi", and unusual
-   spaces become normal ones, so the same word always looks the same. Bullet
-   glyphs come out of PDFs as odd code points (here U+007F, in Word exports
-   often U+F0B7), so they are mapped back to "•".
-3. Boilerplate removal: the running header that repeats on most pages and the
-   "Page X of Y" footer are dropped. Left in, they would be part of every
-   chunk and make all chunks look similar to each other.
-4. Line re-joining: PDF text comes back as visual lines. Wrapped lines are
-   joined back into paragraphs, and words hyphenated at a line break are
-   re-joined.
-5. Structure detection: numbered headings ("3. Cold-chain products") and
-   bullets are recognised, so the chunker can split along sections and every
-   chunk knows which section it came from (used in the citations).
-"""
+"""PDF -> clean, structured text blocks."""
 
 import logging
 import re
@@ -33,10 +11,8 @@ from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
-# "3. Cold-chain products", "4.2. Transport": a number with a dot, then a capital letter.
 HEADING_RE = re.compile(r"^\d+(\.\d+)*\.\s+[A-Z]")
 BULLET_RE = re.compile(r"^[•*-]\s+")
-# Code points that bullet glyphs turn into after extraction -> "•".
 BULLET_GLYPHS = str.maketrans({c: "•" for c in "\x7f\x95●▪◦"})
 PAGE_FOOTER_RE = re.compile(r"\bpage\s+\d+\s+(of|/)\s+\d+\b", re.IGNORECASE)
 PAGE_NUMBER_ONLY_RE = re.compile(r"^(page\s*)?\d+(\s*(/|of)\s*\d+)?$", re.IGNORECASE)
@@ -57,8 +33,7 @@ class ParsedDocument:
 
 
 def parse_pdfs(pdf_paths: list[Path]) -> list[ParsedDocument]:
-    """Parse several PDFs. Boilerplate is detected across all of them together,
-    which also works when each document has only one or two pages."""
+    """Parse several PDFs."""
     raw = {path: extract_lines_per_page(path) for path in pdf_paths}
     all_pages = [page for pages in raw.values() for page in pages]
     repeated = find_repeated_lines(all_pages)
@@ -78,7 +53,6 @@ def extract_lines_per_page(pdf_path: Path) -> list[list[str]]:
 
 
 def _shape(line: str) -> str:
-    # "Page 1 of 2" and "Page 2 of 2" should count as the same line.
     return re.sub(r"\d+", "#", line.lower())
 
 
@@ -92,7 +66,7 @@ def find_repeated_lines(pages: list[list[str]], min_share: float = 0.5) -> set[s
 
 
 def is_boilerplate(line: str, repeated: set[str]) -> bool:
-    """Step 3b."""
+    """Step 3b: running header or page footer?"""
     return (
         _shape(line) in repeated
         or PAGE_FOOTER_RE.search(line) is not None
@@ -101,12 +75,7 @@ def is_boilerplate(line: str, repeated: set[str]) -> bool:
 
 
 def _continues_previous(previous: str, line: str) -> bool:
-    """Step 4: is `line` the wrapped continuation of `previous`?
-
-    A new paragraph starts when the previous line closed a sentence and the new
-    one starts with a capital letter. Splitting a long paragraph in two by
-    mistake is harmless, because the chunker keeps a section together anyway.
-    """
+    """Step 4: is `line` the wrapped continuation of `previous`?"""
     return not previous.endswith((".", ":", "?", "!")) or line[:1].islower()
 
 
@@ -133,8 +102,6 @@ def to_document(pdf_path: Path, pages: list[list[str]], repeated: set[str]) -> P
             if is_boilerplate(line, repeated):
                 continue
 
-            # The title is printed at the top of page 1 (possibly wrapped over
-            # two lines). We already have it from the metadata, so skip it.
             if title_lines_to_skip and title_lines_to_skip.startswith(line):
                 title_lines_to_skip = title_lines_to_skip[len(line):].lstrip()
                 continue

@@ -1,24 +1,4 @@
-"""
-Coordinator: decides which sub-agent / tool each question needs.
-
-The graph is the one from the travel-agent notebook (07), with different tools:
-
-        START -> reasoner --(tool calls?)--> tools --> reasoner --> ... --> END
-                    |                                                       ^
-                    +------------------(no tool calls: final answer)--------+
-
-- `reasoner` is the LLM with the three tools bound. Reading the question and
-  the tool descriptions, it either calls tools or writes the final answer.
-  This tool choice is the router.
-- `tools` (LangGraph's ToolNode) runs the requested tools, in parallel when
-  the LLM asks for several at once, and appends their JSON results.
-- Multi-step questions are simply several rounds, for example
-  query_database -> calculator -> final answer.
-
-After the run, every tool call and its result is read back from the message
-history, so the API response (and the log) shows exactly which sub-agent and
-tool handled the request, with what input, and what came back.
-"""
+"""Coordinator: decides which sub-agent / tool each question needs."""
 
 import json
 import logging
@@ -76,7 +56,7 @@ class AgentState(TypedDict):
 
 @dataclass
 class Step:
-    agent: str  # document_agent | sql_agent | calculator
+    agent: str
     tool: str
     input: dict
     output: dict
@@ -101,7 +81,6 @@ class Coordinator:
         self.max_tool_rounds = max_tool_rounds
         tools = build_tools(document_agent, sql_agent)
         self.llm_with_tools = llm.bind_tools(tools)
-        # Same tools declared, but the model may not call them: used to force a final answer.
         self.llm_answer_only = llm.bind_tools(tools, tool_choice="none")
 
         graph = StateGraph(AgentState)
@@ -113,14 +92,11 @@ class Coordinator:
         self.graph = graph.compile()
 
     def _reasoner(self, state: AgentState) -> dict:
-        # The answer language is decided in code, not left to the model: in testing, gpt-oss
-        # once answered an English question in Persian.
         question = str(state["messages"][0].content)
         language = "Persian" if PERSIAN_CHARS.search(question) else "English"
         system = SYSTEM_PROMPT.format(today=date.today().isoformat(), language=language)
         rounds_used = sum(1 for m in state["messages"] if isinstance(m, AIMessage) and m.tool_calls)
         if rounds_used >= self.max_tool_rounds:
-            # Safety valve against endless tool loops: tool calls are switched off, so it must answer.
             reply = self.llm_answer_only.invoke([SystemMessage(system + FINAL_ROUND_NOTE)] + state["messages"])
         else:
             reply = self.llm_with_tools.invoke([SystemMessage(system)] + state["messages"])

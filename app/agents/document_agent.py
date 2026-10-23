@@ -1,28 +1,4 @@
-"""
-Document sub-agent: answers questions from the policy PDFs (RAG).
-
-    question --(Persian?)--> English search query      (1 LLM call, only for Persian)
-             --> hybrid search (vectors + BM25), top-k chunks
-             --> drop chunks under the similarity threshold
-             --> nothing left?  "not in the documents"  (LLM never called)
-             --> quoted evidence + grounded answer + cited excerpt ids   (1 LLM call, structured output)
-             --> keep only citations that were really retrieved
-
-Two independent guards stop made-up answers:
-  1. the similarity threshold: unrelated chunks never reach the LLM;
-  2. the structured output: the model must say whether the excerpts answer the
-     question (`answerable`) and which excerpts it used. An answer with no
-     valid citation is treated as "not found".
-In the travel-agent project, a retrieval miss was covered up by the LLM
-answering from its own knowledge; these guards exist to prevent exactly that.
-
-"Quote, then answer": the model first copies the sentences that answer the
-question (`evidence`), then answers. The evaluation showed why: without it,
-gpt-oss read "a 5% restocking fee applies to returns not caused by a Helix
-error" next to "returns caused by a Helix error ... without a restocking fee"
-and answered "no fee". Quoting first makes it read the right sentence, and the
-quotes are returned to the caller as evidence.
-"""
+"""Document sub-agent: answers questions from the policy PDFs (RAG)."""
 
 import logging
 import re
@@ -33,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
+from app.core.llm import structured_output
 from app.rag.vector_store import SearchHit, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -87,9 +64,9 @@ class DocumentAnswer:
     found: bool
     answer: str
     sources: list[Source] = field(default_factory=list)
-    evidence: list[str] = field(default_factory=list)  # the quoted sentences the answer rests on
+    evidence: list[str] = field(default_factory=list)
     search_query: str = ""
-    retrieved: list[dict] = field(default_factory=list)  # every hit with its score, for debugging
+    retrieved: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -102,7 +79,7 @@ class DocumentAgent:
         self.store = store
         self.top_k = top_k
         self.min_score = min_score
-        self.answerer = llm.with_structured_output(GroundedAnswer, method=structured_output_method)
+        self.answerer = structured_output(llm, GroundedAnswer, structured_output_method)
 
     def run(self, question: str) -> DocumentAnswer:
         started = time.perf_counter()
@@ -122,18 +99,16 @@ class DocumentAgent:
             f"[{i}] ({hit.source}, page {hit.page}, section '{hit.section}')\n{hit.text}"
             for i, hit in enumerate(relevant, start=1)
         )
-        # The answer language is decided in code: asked to "answer in the language of the
-        # question", gpt-oss once answered an English question in German.
         language = "Persian" if PERSIAN_CHARS.search(question) else "English"
         try:
             result = self.answerer.invoke([
                 SystemMessage(ANSWER_PROMPT.format(excerpts=excerpts, language=language)),
                 HumanMessage(question),
             ])
-        except ValueError as exc:  # empty or unparsable output (LangChain's and pydantic's parse errors are ValueErrors)
+        except ValueError as exc:
             logger.warning("[document_agent] unusable structured output: %s", exc)
             result = None
-        if result is None:  # the model answered in prose, or not at all, instead of the required structure
+        if result is None:
             return self._not_found(question, search_query, retrieved, "the LLM returned no structured answer")
 
         cited = [relevant[i - 1] for i in dict.fromkeys(result.cited_ids) if 1 <= i <= len(relevant)]
@@ -153,10 +128,7 @@ class DocumentAgent:
         )
 
     def _search_query(self, question: str) -> str:
-        """The documents are in English. The embedding model is multilingual, but
-        a Persian question still matches better once translated, so Persian
-        questions get one short rewrite call (the same idea as rewrite_query in
-        the Persian legal RAG graph)."""
+        """Search query: Persian questions are translated to English first."""
         if not PERSIAN_CHARS.search(question):
             return question
         response = self.llm.invoke([SystemMessage(TRANSLATE_PROMPT), HumanMessage(question)])

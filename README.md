@@ -56,16 +56,17 @@ uvicorn app.main:app --reload
 
 ### Model setup
 
-Any endpoint that speaks the OpenAI chat API and supports tool calling should
-work. The settings that matter, in `.env`:
+Any endpoint that speaks the OpenAI chat API works, cloud or local. The full
+assistant (`/ask`) needs a model with tool calling; `/documents/ask` and
+`/sql/ask` work with any chat model. The settings that matter, in `.env`:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | e.g. `https://api.avalai.ir/v1`, `https://openrouter.ai/api/v1`, or Ollama on the host: `http://host.docker.internal:11434/v1` |
-| `LLM_MODEL` | `gpt-4o-mini` | `gpt-4o`, `openai/gpt-4o-mini`, `gpt-oss:20b`, ... |
-| `LLM_API_KEY` | none | required; for Ollama any non-empty string works |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | e.g. `https://api.avalai.ir/v1`, `https://openrouter.ai/api/v1`, Ollama on the host `http://host.docker.internal:11434/v1`, LM Studio `http://host.docker.internal:1234/v1` |
+| `LLM_MODEL` | `gpt-4o-mini` | `gpt-4o`, `openai/gpt-4o-mini`, `gpt-oss:20b`, `qwen2.5:7b`, ... |
+| `LLM_API_KEY` | none | required for cloud providers; not needed for a local server |
 | `LLM_REASONING_EFFORT` | empty | `low`, `medium` or `high`, for reasoning models only |
-| `LLM_STRUCTURED_OUTPUT` | `json_schema` | `function_calling` if the provider doesn't support `response_format` |
+| `LLM_STRUCTURED_OUTPUT` | `json_schema` | falls back to `function_calling` by itself if the provider rejects `response_format` |
 | `EMBEDDING_PROVIDER` | `local` | `openai` uses the provider's `/embeddings` (then also set `EMBEDDING_MODEL`) |
 
 I developed and evaluated it with gpt-oss:20b in Ollama on a 16 GB GPU
@@ -74,10 +75,13 @@ I developed and evaluated it with gpt-oss:20b in Ollama on a 16 GB GPU
 ```ini
 LLM_BASE_URL=http://host.docker.internal:11434/v1   # without Docker: http://localhost:11434/v1
 LLM_MODEL=gpt-oss:20b
-LLM_API_KEY=ollama
-LLM_TIMEOUT_SECONDS=180
 LLM_REASONING_EFFORT=high
 ```
+
+`docker-compose.yml` maps `host.docker.internal` to the host, so this also works
+on Linux (there, start Ollama with `OLLAMA_HOST=0.0.0.0` so the container can
+reach it). Reasoning models in the cloud (o-series, gpt-5) only accept their
+default temperature, so it isn't sent for them.
 
 The rest (top-k, similarity threshold, SQL timeout, row limit, ...) is in
 `app/core/config.py` and can be overridden from `.env` the same way.
@@ -291,13 +295,14 @@ pytest                                    # locally
 docker compose run --rm assistant pytest  # in the container
 ```
 
-There are 117 tests. All of them except `test_retrieval_quality.py`, which uses
+There are 129 tests. All of them except `test_retrieval_quality.py`, which uses
 the real embedding model, run offline in a few seconds with a scripted fake LLM
 (`tests/fakes.py`). They cover:
 
 - the SQL validator against injection patterns
 - the read-only executor, even with the validator bypassed
 - the SQL agent's retry logic and the calculator
+- the model setup for local servers and cloud reasoning models
 - PDF cleanup and chunking
 - the document agent's guards and the coordinator graph
 - API error handling
@@ -412,5 +417,7 @@ LanceDB and the tool-calling agent are from
 [NLP-Foundations-to-Agents](https://github.com/AlirezaShG/NLP-Foundations-to-Agents)
 (notebooks 06 and 07). The FastAPI layout and the embedding model are from
 [pharma-risk-intelligence](https://github.com/AlirezaShG/pharma-risk-intelligence).
-Helix and everything about it is fictional. The policy documents and the sample
-data were created with the help of an LLM.
+Helix and everything about it is fictional.
+
+I built this repository, including the documents and the sample data, with an
+LLM. The README and the project structure were done under my supervision.

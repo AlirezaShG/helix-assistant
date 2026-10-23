@@ -1,9 +1,4 @@
-"""
-Request and response models of the HTTP API.
-
-Pydantic validates every request before our code sees it (FastAPI answers
-422 with the reason), and the response models produce the schema shown at /docs.
-"""
+"""Request and response models of the HTTP API."""
 
 from typing import Any
 

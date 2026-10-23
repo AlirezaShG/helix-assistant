@@ -1,10 +1,4 @@
-"""
-Coordinator routing and tracing, with scripted tool calls.
-
-The real LangGraph graph and the real tools run; only the LLMs are scripted.
-The multi-step scenario: SQL agent fetches two numbers -> calculator computes
-the percentage -> final answer. The trace must show both components in order.
-"""
+"""Coordinator routing and tracing, with scripted tool calls."""
 
 from langchain_core.messages import AIMessage
 
@@ -29,7 +23,7 @@ def tool_call(name, args, call_id):
 def test_multi_step_sql_then_calculator(db_path, hash_store):
     sql_llm = FakeChatModel(structured=[SQLDraft(sql=SHARE_SQL, reason="hospital and total revenue in Q1")])
     sql_agent = SQLAgent(sql_llm, db_path)
-    hospital, total = sql_agent.run("probe").rows[0]  # the real numbers, to script the calculator call
+    hospital, total = sql_agent.run("probe").rows[0]
     sql_llm.structured.append(SQLDraft(sql=SHARE_SQL, reason="hospital and total revenue in Q1"))
 
     expression = f"{hospital} / {total} * 100"
@@ -48,7 +42,6 @@ def test_multi_step_sql_then_calculator(db_path, hash_store):
     assert reply.steps[1].output["result"] == round(hospital / total * 100, 10)
     assert reply.answer.startswith("Hospitals generated")
 
-    # The calculator result was handed back to the LLM before it wrote the answer.
     last_prompt = coordinator_llm.calls[-1]
     assert any(getattr(m, "name", None) == "calculator" for m in last_prompt)
 
