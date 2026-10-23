@@ -79,10 +79,6 @@ LLM_TIMEOUT_SECONDS=180
 LLM_REASONING_EFFORT=high
 ```
 
-On Windows, if a system proxy or VPN client is running, the OpenAI client also
-sends requests for localhost through it and gets a 502. Setting
-`NO_PROXY=localhost,127.0.0.1` fixes that (only needed outside Docker).
-
 The rest (top-k, similarity threshold, SQL timeout, row limit, ...) is in
 `app/core/config.py` and can be overridden from `.env` the same way.
 
@@ -400,20 +396,6 @@ synthetic. Questions that overlap with the demo scenarios are marked `# seen` in
   writes the final answer. They stay testable and easy to chain.
 - Some things are done in code instead of left to the model: the answer
   language, read-only access, arithmetic and the "not found" threshold.
-
-## Limitations
-
-- Small synthetic corpus: 4 PDFs and one SQLite file. With more documents I'd
-  add metadata filters and a re-ranker.
-- No OCR; scanned pages are skipped.
-- Quality depends on the model. I only evaluated gpt-oss:20b locally, and a
-  few policy questions flip between right and wrong across runs. gpt-4o-mini and
-  others use the same API but weren't part of the recorded runs.
-- Latency with a local 20B model is about 4 s per document or SQL question. Multi-step
-  questions take around 8 s (p95 17 s), since they need 3 or 4 LLM calls.
-- No conversation memory between requests.
-- Dates are Gregorian; Jalali dates in questions aren't converted.
-- No auth or rate limiting.
 
 ## Credits
 
