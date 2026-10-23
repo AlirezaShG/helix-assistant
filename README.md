@@ -420,4 +420,5 @@ LanceDB and the tool-calling agent are from
 Helix and everything about it is fictional.
 
 I built this repository, including the documents and the sample data, with an
-LLM. The README and the project structure were done under my supervision.
+LLM. The project structure is my own design, and the README was written under
+my supervision.
